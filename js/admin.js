@@ -45,15 +45,15 @@ function handleAdminApiResponse(response) {
 
 async function checkAdminSession() {
     const token = getAdminToken();
-    if (!token) return false;
+    if (!token) return { success: false };
     try {
         const res = await fetch(`${API_BASE}/admin/auth/session`, {
             headers: { 'X-Admin-Token': token }
         });
         const data = await res.json();
-        return data.success === true;
+        return data;
     } catch {
-        return false;
+        return { success: false };
     }
 }
 
@@ -143,6 +143,14 @@ async function verifyAdminOtp() {
             checkServerStatus();
             loadCampaign();
             loadLeaderboard();
+
+            // Başarılı girişten hemen sonra session check tetikleyip sürücü sayısını alalım
+            checkAdminSession().then(sessionData => {
+                if (sessionData && sessionData.activeDriverSessions !== undefined) {
+                    document.getElementById('activeSessionsCount').textContent = sessionData.activeDriverSessions;
+                }
+            });
+
         } else {
             errorEl.textContent = data.message || 'Doğrulama başarısız.';
         }
@@ -170,7 +178,7 @@ async function adminLogout() {
                 method: 'POST',
                 headers: { 'X-Admin-Token': token }
             });
-        } catch (_) {}
+        } catch (_) { }
         setAdminToken(null);
     }
     showLoginScreen();
@@ -183,12 +191,15 @@ async function adminLogout() {
 // Sayfa Yüklendiğinde Başlat
 // ============================================
 document.addEventListener('DOMContentLoaded', async () => {
-    const isLoggedIn = await checkAdminSession();
-    if (isLoggedIn) {
+    const sessionData = await checkAdminSession();
+    if (sessionData && sessionData.success) {
         showDashboard();
         checkServerStatus();
         loadCampaign();
         loadLeaderboard();
+        if (sessionData.activeDriverSessions !== undefined) {
+            document.getElementById('activeSessionsCount').textContent = sessionData.activeDriverSessions;
+        }
     } else {
         showLoginScreen();
         checkServerStatus();
@@ -409,6 +420,11 @@ function showToast(type, message) {
 
 /** Mevcut görüntülenen sıralama: false = mevcut dönem, true = önceki dönem */
 let currentLeaderboardView = false;
+let currentLeaderboardPage = 1;
+const LEADERBOARD_PAGE_SIZE = 20;
+let currentLeaderboardData = [];
+let currentTotalOrders = 0;
+let currentTotalDrivers = 0;
 
 /**
  * Mevcut görünümü yeniler (Yenile butonu)
@@ -486,7 +502,14 @@ async function loadLeaderboard(previous = false, startDate = null, endDate = nul
         }
         periodInfo.textContent = periodDesc;
 
-        renderLeaderboard(data.leaderboard, data.totalOrders, data.totalDrivers);
+        periodInfo.textContent = periodDesc;
+
+        currentLeaderboardData = data.leaderboard || [];
+        currentTotalOrders = data.totalOrders || 0;
+        currentTotalDrivers = data.totalDrivers || 0;
+        currentLeaderboardPage = 1;
+
+        renderLeaderboard();
 
     } catch (error) {
         console.error('[Admin] Leaderboard hatası:', error);
@@ -518,14 +541,10 @@ function filterLeaderboard() {
     loadLeaderboard(false, startInput, endInput);
 }
 
-/**
- * Leaderboard verilerini HTML olarak render eder
- * @param {Array} list - Top 10 sürücü listesi
- * @param {number} totalOrders - Toplam sipariş sayısı
- * @param {number} totalDrivers - Toplam sürücü sayısı
- */
-function renderLeaderboard(list, totalOrders, totalDrivers) {
+function renderLeaderboard() {
     const content = document.getElementById('leaderboardContent');
+
+    const totalPages = Math.ceil(currentLeaderboardData.length / LEADERBOARD_PAGE_SIZE) || 1;
 
     let html = '';
 
@@ -533,17 +552,17 @@ function renderLeaderboard(list, totalOrders, totalDrivers) {
     html += `
         <div class="lb-stats">
             <div class="lb-stat">
-                <div class="lb-stat-value">${totalOrders.toLocaleString('tr-TR')}</div>
+                <div class="lb-stat-value">${currentTotalOrders.toLocaleString('tr-TR')}</div>
                 <div class="lb-stat-label">Toplam Yolculuk</div>
             </div>
             <div class="lb-stat">
-                <div class="lb-stat-value">${totalDrivers.toLocaleString('tr-TR')}</div>
+                <div class="lb-stat-value">${currentTotalDrivers.toLocaleString('tr-TR')}</div>
                 <div class="lb-stat-label">Kayıtlı Sürücü</div>
             </div>
         </div>
     `;
 
-    if (list.length === 0) {
+    if (currentLeaderboardData.length === 0) {
         html += '<p class="lb-empty">Bu dönemde henüz tamamlanmış yolculuk yok.</p>';
         content.innerHTML = html;
         return;
@@ -551,7 +570,11 @@ function renderLeaderboard(list, totalOrders, totalDrivers) {
 
     html += '<div class="lb-list">';
 
-    list.forEach(entry => {
+    const startIndex = (currentLeaderboardPage - 1) * LEADERBOARD_PAGE_SIZE;
+    const endIndex = startIndex + LEADERBOARD_PAGE_SIZE;
+    const pageData = currentLeaderboardData.slice(startIndex, endIndex);
+
+    pageData.forEach(entry => {
         const rankClass = entry.rank <= 3 ? ` lb-rank-${entry.rank}` : '';
         html += `
             <div class="lb-item">
@@ -566,7 +589,31 @@ function renderLeaderboard(list, totalOrders, totalDrivers) {
     });
 
     html += '</div>';
+
+    // Sayfalandırma Kontrolleri
+    if (totalPages > 1) {
+        html += `
+            <div class="lb-pagination" style="display: flex; justify-content: center; gap: 10px; margin-top: 20px;">
+                <button class="btn" style="padding: 5px 15px; font-size: 14px;" onclick="changeLeaderboardPage(-1)" ${currentLeaderboardPage === 1 ? 'disabled' : ''}>Önceki</button>
+                <div style="display: flex; align-items: center; font-weight: bold;">Sayfa ${currentLeaderboardPage} / ${totalPages}</div>
+                <button class="btn" style="padding: 5px 15px; font-size: 14px;" onclick="changeLeaderboardPage(1)" ${currentLeaderboardPage === totalPages ? 'disabled' : ''}>Sonraki</button>
+            </div>
+        `;
+    }
+
     content.innerHTML = html;
+}
+
+function changeLeaderboardPage(delta) {
+    const totalPages = Math.ceil(currentLeaderboardData.length / LEADERBOARD_PAGE_SIZE) || 1;
+    let newPage = currentLeaderboardPage + delta;
+    if (newPage < 1) newPage = 1;
+    if (newPage > totalPages) newPage = totalPages;
+
+    if (newPage !== currentLeaderboardPage) {
+        currentLeaderboardPage = newPage;
+        renderLeaderboard();
+    }
 }
 
 // ============================================
