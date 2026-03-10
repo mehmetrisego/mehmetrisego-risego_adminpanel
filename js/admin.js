@@ -3,13 +3,13 @@
 // ============================================
 // API Base URL: localhost (sadece local sunucuda) veya Railway production backend
 const API_BASE = (function () {
-    if (typeof window === 'undefined') return 'https://risegobackend-production-8be6.up.railway.app/api';
+    if (typeof window === 'undefined') return 'https://risegobackend-production-bf6d.up.railway.app/api';
     const h = window.location.hostname;
     // Sadece localhost/127.0.0.1 üzerinde çalışıyorsa local API kullan (geliştirme için)
     const isLocalDev = h === 'localhost' || h === '127.0.0.1';
     if (isLocalDev) return 'http://localhost:3000/api';
     // file://, GitHub Pages, risegodriver.com vb. → production Railway backend
-    return 'https://risegobackend-production-8be6.up.railway.app/api';
+    return 'https://risegobackend-production-bf6d.up.railway.app/api';
 })();
 
 const ADMIN_TOKEN_KEY = 'risego_admin_token';
