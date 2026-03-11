@@ -415,10 +415,9 @@ function showToast(type, message) {
 }
 
 // ============================================
-// Leaderboard (10 günlük dönem)
+// Leaderboard
 // ============================================
 
-/** Mevcut görüntülenen sıralama: false = mevcut dönem, true = önceki dönem */
 let currentLeaderboardView = false;
 let currentLeaderboardPage = 1;
 const LEADERBOARD_PAGE_SIZE = 20;
@@ -426,9 +425,7 @@ let currentLeaderboardData = [];
 let currentTotalOrders = 0;
 let currentTotalDrivers = 0;
 
-/**
- * Mevcut görünümü yeniler (Yenile butonu)
- */
+/** Mevcut görünümü yeniler */
 function reloadCurrentLeaderboard() {
     loadLeaderboard(currentLeaderboardView);
 }
@@ -440,19 +437,18 @@ function reloadCurrentLeaderboard() {
  * @param {string} [endDate=null] - ISO YYYY-MM-DD
  */
 async function loadLeaderboard(previous = false, startDate = null, endDate = null) {
-    // Sadece previous kullanıldığında mevcut görünümü güncelle
     if (!startDate) {
         currentLeaderboardView = previous;
     }
 
-    const content = document.getElementById('leaderboardContent');
+    const content     = document.getElementById('leaderboardContent');
     const periodTitle = document.getElementById('leaderboardPeriod');
-    const periodInfo = document.getElementById('periodInfoText');
-    const btnCurrent = document.getElementById('btnCurrent');
+    const periodInfo  = document.getElementById('periodInfoText');
+    const btnCurrent  = document.getElementById('btnCurrent');
     const btnPrevious = document.getElementById('btnPrevious');
 
-    if (btnCurrent) btnCurrent.classList.toggle('active', !previous);
-    if (btnPrevious) btnPrevious.classList.toggle('active', previous);
+    if (btnCurrent)  btnCurrent.classList.toggle('active', !previous && !startDate);
+    if (btnPrevious) btnPrevious.classList.toggle('active', previous && !startDate);
 
     content.innerHTML = `
         <div class="leaderboard-loading">
@@ -466,17 +462,20 @@ async function loadLeaderboard(previous = false, startDate = null, endDate = nul
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 120000);
 
-        let url = previous ? `${API_BASE}/admin/leaderboard?previous=1` : `${API_BASE}/admin/leaderboard`;
-
-        // Özel tarih filtresi varsa URL'e parametre olarak ekle (önceki dönem seçeneğini ezer)
+        let url;
         if (startDate && endDate) {
             url = `${API_BASE}/admin/leaderboard?from=${startDate}&to=${endDate}`;
+            if (btnCurrent)  btnCurrent.classList.remove('active');
+            if (btnPrevious) btnPrevious.classList.remove('active');
+        } else if (previous) {
+            const { from: pFrom, to: pTo } = getPreviousPeriodDates();
+            url = `${API_BASE}/admin/leaderboard?from=${pFrom}&to=${pTo}`;
+        } else {
+            const today = getTodayStr();
+            url = `${API_BASE}/admin/leaderboard?from=${today}&to=${today}`;
         }
 
-        const response = await fetch(url, {
-            headers: getAdminHeaders(),
-            signal: controller.signal
-        });
+        const response = await fetch(url, { headers: getAdminHeaders(), signal: controller.signal });
         clearTimeout(timeout);
         if (handleAdminApiResponse(response)) return;
 
@@ -484,39 +483,94 @@ async function loadLeaderboard(previous = false, startDate = null, endDate = nul
 
         if (!data.success) {
             content.innerHTML = '<p class="leaderboard-error">Sıralama tablosu yüklenemedi.</p>';
-            periodInfo.textContent = 'Veri alınamadı';
+            if (periodInfo) periodInfo.textContent = 'Veri alınamadı';
             return;
         }
 
-        periodTitle.textContent = data.periodLabel;
+        if (periodTitle) periodTitle.textContent = data.periodLabel;
+
         let periodDesc;
         if (startDate && endDate) {
             periodDesc = `${data.periodLabel} tarihleri arası özel filtreleme`;
-            // Filtreleme yapıldığında tab butonlarının aktifliğini kaldır
-            if (btnCurrent) btnCurrent.classList.remove('active');
-            if (btnPrevious) btnPrevious.classList.remove('active');
         } else if (previous) {
-            periodDesc = `${data.periodLabel} (sonlanmış kampanya) — en çok yolculuk yapan sürücüler`;
+            periodDesc = `${data.periodLabel} (önceki dönem) — en çok yolculuk yapan sürücüler`;
         } else {
             periodDesc = `${data.periodLabel} tarihleri arasında en çok yolculuk yapan sürücüler`;
         }
-        periodInfo.textContent = periodDesc;
-
-        periodInfo.textContent = periodDesc;
+        if (data.syncedAt) {
+            const syncDate = new Date(data.syncedAt);
+            periodDesc += ` · Son güncelleme: ${formatDate(syncDate)}`;
+        }
+        if (periodInfo) periodInfo.textContent = periodDesc;
 
         currentLeaderboardData = data.leaderboard || [];
-        currentTotalOrders = data.totalOrders || 0;
-        currentTotalDrivers = data.totalDrivers || 0;
+        currentTotalOrders     = data.totalOrders  || 0;
+        currentTotalDrivers    = data.totalDrivers || 0;
         currentLeaderboardPage = 1;
 
         renderLeaderboard();
 
     } catch (error) {
         console.error('[Admin] Leaderboard hatası:', error);
-        const msg = error.name === 'AbortError'
-            ? 'İstek zaman aşımına uğradı.'
-            : 'Sunucuya bağlanılamadı.';
+        const msg = error.name === 'AbortError' ? 'İstek zaman aşımına uğradı.' : 'Sunucuya bağlanılamadı.';
         content.innerHTML = `<p class="leaderboard-error">${msg}</p>`;
+    }
+}
+
+/** Bugünün tarihini YYYY-MM-DD formatında döner */
+function getTodayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Önceki 10 günlük dönem tarihlerini hesaplar */
+function getPreviousPeriodDates() {
+    const now   = new Date();
+    const day   = now.getDate();
+    const year  = now.getFullYear();
+    const month = now.getMonth();
+    let fromDate, toDate;
+    if (day <= 10) {
+        fromDate = new Date(year, month - 1, 21);
+        toDate   = new Date(year, month, 0, 23, 59, 59);
+    } else if (day <= 20) {
+        fromDate = new Date(year, month, 1);
+        toDate   = new Date(year, month, 10, 23, 59, 59);
+    } else {
+        fromDate = new Date(year, month, 11);
+        toDate   = new Date(year, month, 20, 23, 59, 59);
+    }
+    const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    return { from: fmt(fromDate), to: fmt(toDate) };
+}
+
+/**
+ * Tüm leaderboard cache'ini temizler ve Yandex API'den yeniden senkronizasyon başlatır.
+ */
+async function forceResyncLeaderboard() {
+    if (!confirm('Tüm leaderboard verisi yeniden Yandex API\'den çekilecek.\nBu işlem 1-5 dakika sürebilir. Devam etmek istiyor musunuz?')) return;
+
+    const btn = document.getElementById('btnResync');
+    if (btn) { btn.disabled = true; btn.textContent = 'Senkronize ediliyor...'; }
+
+    try {
+        const response = await fetch(`${API_BASE}/admin/leaderboard/resync`, {
+            method: 'POST',
+            headers: getAdminHeaders()
+        });
+        if (handleAdminApiResponse(response)) return;
+        const data = await response.json();
+        if (data.success) {
+            showToast('success', '✅ Yeniden senkronizasyon başlatıldı. 1-5 dakika içinde veriler güncellenir.');
+            setTimeout(() => reloadCurrentLeaderboard(), 90000);
+        } else {
+            showToast('error', data.message || 'Senkronizasyon başlatılamadı.');
+        }
+    } catch (err) {
+        showToast('error', 'Sunucuya bağlanılamadı.');
+        console.error('[Admin] Resync hatası:', err);
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '🔄 Yeniden Senkronize Et'; }
     }
 }
 
@@ -525,19 +579,16 @@ async function loadLeaderboard(previous = false, startDate = null, endDate = nul
  */
 function filterLeaderboard() {
     const startInput = document.getElementById('startDate').value;
-    const endInput = document.getElementById('endDate').value;
+    const endInput   = document.getElementById('endDate').value;
 
     if (!startInput || !endInput) {
         showToast('error', 'Lütfen hem başlangıç hem de bitiş tarihi seçin.');
         return;
     }
-
     if (new Date(startInput) > new Date(endInput)) {
         showToast('error', 'Başlangıç tarihi bitiş tarihinden sonra olamaz.');
         return;
     }
-
-    // Seçilen tarih aralığında verileri yükle
     loadLeaderboard(false, startInput, endInput);
 }
 
