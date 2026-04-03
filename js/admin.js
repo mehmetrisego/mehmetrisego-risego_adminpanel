@@ -1,8 +1,8 @@
 // ============================================
 // RiseGo Admin Panel - JavaScript
 // ============================================
-// API: yerelde localhost; üretimde Railway.
-const PRODUCTION_API = 'https://risegobackend-production-2e58.up.railway.app/api';
+// API: yerelde localhost; üretimde AWS Lightsail.
+const PRODUCTION_API = 'https://api.risegodriver.com/api';
 const API_BASE = (function () {
     if (typeof window === 'undefined') return PRODUCTION_API;
     const h = window.location.hostname;
