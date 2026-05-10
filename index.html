@@ -268,17 +268,32 @@
 
         <!-- Çekim Geçmişi Modal (Pop-up) -->
         <div class="modal" id="paymentLogsModal" style="display:none">
-            <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-content" style="max-width: 1100px; width: 95%;">
                 <div class="modal-header">
-                    <div style="display: flex; align-items: center; gap: 12px;">
-                        <div class="card-icon payment-icon" style="width: 32px; height: 32px;">
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
+                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%;">
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div class="card-icon payment-icon" style="width: 32px; height: 32px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                                    <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </div>
+                            <h3 class="modal-title">Çekim Talepleri Geçmişi</h3>
                         </div>
-                        <h3 class="modal-title">Çekim Talepleri Geçmişi</h3>
+                        
+                        <div class="header-tools">
+                            <div class="total-balance-badge">
+                                Toplam Sürücü Bakiyesi: <span id="totalDriversBalance">Yükleniyor...</span>
+                            </div>
+                            <div class="search-wrapper">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
+                                    <circle cx="11" cy="11" r="8"></circle>
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                </svg>
+                                <input type="text" id="paymentSearchInput" placeholder="İsim, ID veya Ref No ara..." class="modern-search-input">
+                            </div>
+                        </div>
                     </div>
-                    <button class="btn-close-modal" onclick="closePaymentModal()">&times;</button>
+                    <button class="btn-close-modal" onclick="closePaymentModal()" style="position: absolute; right: 20px; top: 20px;">&times;</button>
                 </div>
                 <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
                     <div class="payment-body">
@@ -299,6 +314,20 @@
                                     <!-- Dinamik veri -->
                                 </tbody>
                             </table>
+                        </div>
+                        <!-- Sayfalama (Pagination) Kontrolleri -->
+                        <div id="paymentPagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding: 15px 5px; border-top: 1px solid var(--border-color);">
+                            <div style="font-size: 13px; color: var(--text-secondary); font-weight: 500;" id="paymentPageInfo"></div>
+                            <div style="display: flex; gap: 12px;">
+                                <button id="paymentPrevBtn" class="pagination-btn" onclick="changePaymentPage(-1)">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+                                    Önceki
+                                </button>
+                                <button id="paymentNextBtn" class="pagination-btn" onclick="changePaymentPage(1)">
+                                    Sonraki
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+                                </button>
+                            </div>
                         </div>
                         <div id="paymentEmpty" style="display:none; text-align:center; padding:40px; color:var(--text-muted); font-size:14px;">
                             Henüz bir çekim talebi bulunmuyor.

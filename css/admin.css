@@ -1476,3 +1476,120 @@ select.filter-input {
 .btn-modal-close:hover {
     background: var(--surface-hover);
 }
+
+/* Pagination Buttons */
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 10px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s var(--ease);
+    box-shadow: var(--shadow-sm);
+}
+
+.pagination-btn:hover:not(:disabled) {
+    background: var(--surface-hover);
+    border-color: var(--accent);
+    color: var(--accent);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.15);
+}
+
+.pagination-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    filter: grayscale(1);
+}
+
+/* Payment Table Enhancements */
+#paymentTable th:last-child, 
+#paymentTable td:last-child {
+    white-space: nowrap;
+    min-width: 160px;
+    text-align: right;
+}
+
+/* Modern Search and Header Tools */
+.header-tools {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    margin-right: 48px;
+    flex-wrap: wrap;
+}
+
+.total-balance-badge {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--surface);
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    box-shadow: var(--shadow-sm);
+}
+
+.total-balance-badge span {
+    color: var(--success);
+    font-weight: 700;
+    text-shadow: 0 0 12px var(--success-glow);
+}
+
+.search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 14px;
+    color: var(--text-muted);
+    pointer-events: none;
+    transition: color 0.2s var(--ease);
+    z-index: 1;
+}
+
+.modern-search-input {
+    width: 280px;
+    padding: 10px 16px 10px 40px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    transition: all 0.3s var(--ease);
+    box-shadow: var(--shadow-sm);
+}
+
+.modern-search-input:focus {
+    width: 320px;
+    border-color: var(--accent);
+    background: var(--surface-hover);
+    box-shadow: 0 0 0 4px var(--accent-subtle), var(--shadow-md);
+}
+
+.modern-search-input:focus ~ .search-icon {
+    color: var(--accent);
+}
+
+.modern-search-input::placeholder {
+    color: var(--text-muted);
+}

@@ -822,25 +822,42 @@ function escapeHtml(str) {
 // Çekim Talepleri (Payment Logs) Yönetimi
 // ============================================
 
+let allPaymentLogs = [];
+let filteredPaymentLogs = [];
+let currentPaymentPage = 1;
+const PAYMENT_ITEMS_PER_PAGE = 30;
+
 async function loadPaymentLogs() {
     const tableBody = document.getElementById('paymentTableBody');
     const emptyEl = document.getElementById('paymentEmpty');
     const tableContainer = document.querySelector('#paymentLogsModal .table-container');
+    const paginationEl = document.getElementById('paymentPagination');
     if (!tableBody) return;
 
     tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Yükleniyor...</td></tr>';
+    if (paginationEl) paginationEl.style.display = 'none';
+
+    // Toplam bakiyeyi asenkron olarak çek
+    fetchTotalDriversBalance();
 
     try {
         const res = await fetch(`${API_BASE}/admin/payment-logs`, { headers: getAdminHeaders() });
         if (handleAdminApiResponse(res)) return;
         const data = await res.json();
 
-        if (data.success && data.logs) {
-            renderPaymentLogs(data.logs);
+        if (data.success) {
+            allPaymentLogs = data.logs || [];
+            applyPaymentFilter();
+            
+            // Arama kutusuna listener ekle (zaten yoksa)
+            const searchInput = document.getElementById('paymentSearchInput');
+            if (searchInput && !searchInput.hasAttribute('data-listener-added')) {
+                searchInput.addEventListener('input', applyPaymentFilter);
+                searchInput.setAttribute('data-listener-added', 'true');
+            }
         } else {
-            tableBody.innerHTML = '';
-            emptyEl.style.display = 'block';
-            if (tableContainer) tableContainer.style.display = 'none';
+            allPaymentLogs = [];
+            applyPaymentFilter();
         }
     } catch (err) {
         console.error('[Admin] Ödeme kayıtları yüklenemedi:', err);
@@ -848,25 +865,71 @@ async function loadPaymentLogs() {
     }
 }
 
-function renderPaymentLogs(logs) {
+async function fetchTotalDriversBalance() {
+    const balEl = document.getElementById('totalDriversBalance');
+    if (!balEl) return;
+    balEl.textContent = 'Hesaplanıyor...';
+    try {
+        const res = await fetch(`${API_BASE}/admin/drivers/total-balance`, { headers: getAdminHeaders() });
+        const data = await res.json();
+        if (data.success) {
+            const formatted = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.totalBalance || 0);
+            balEl.textContent = formatted + ' ₺';
+        } else {
+            balEl.textContent = 'Hata';
+        }
+    } catch (err) {
+        balEl.textContent = 'Hata';
+    }
+}
+
+function applyPaymentFilter() {
+    const searchVal = (document.getElementById('paymentSearchInput')?.value || '').toLowerCase().trim();
+    
+    if (!searchVal) {
+        filteredPaymentLogs = [...allPaymentLogs];
+    } else {
+        filteredPaymentLogs = allPaymentLogs.filter(log => {
+            const name = (log.beneficiary_name || '').toLowerCase();
+            const id = (log.driver_id || '').toLowerCase();
+            const ref = (log.tu_ref_number || '').toLowerCase();
+            return name.includes(searchVal) || id.includes(searchVal) || ref.includes(searchVal);
+        });
+    }
+    
+    currentPaymentPage = 1;
+    renderPaymentPage();
+}
+
+function renderPaymentPage() {
     const tableBody = document.getElementById('paymentTableBody');
     const emptyEl = document.getElementById('paymentEmpty');
     const tableContainer = document.querySelector('#paymentLogsModal .table-container');
-
+    const paginationEl = document.getElementById('paymentPagination');
+    
     tableBody.innerHTML = '';
-
-    if (!logs || logs.length === 0) {
+    
+    if (filteredPaymentLogs.length === 0) {
         emptyEl.style.display = 'block';
         if (tableContainer) tableContainer.style.display = 'none';
+        if (paginationEl) paginationEl.style.display = 'none';
         return;
     }
-
+    
     emptyEl.style.display = 'none';
     if (tableContainer) tableContainer.style.display = 'block';
-
-    logs.forEach(log => {
+    if (paginationEl) paginationEl.style.display = 'flex';
+    
+    const totalPages = Math.ceil(filteredPaymentLogs.length / PAYMENT_ITEMS_PER_PAGE) || 1;
+    if (currentPaymentPage > totalPages) currentPaymentPage = totalPages;
+    if (currentPaymentPage < 1) currentPaymentPage = 1;
+    
+    const startIndex = (currentPaymentPage - 1) * PAYMENT_ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + PAYMENT_ITEMS_PER_PAGE, filteredPaymentLogs.length);
+    const pageLogs = filteredPaymentLogs.slice(startIndex, endIndex);
+    
+    pageLogs.forEach(log => {
         const tr = document.createElement('tr');
-        
         let statusClass = 'pending';
         let statusText = 'Bekliyor';
         
@@ -896,6 +959,24 @@ function renderPaymentLogs(logs) {
         `;
         tableBody.appendChild(tr);
     });
+    
+    const pageInfo = document.getElementById('paymentPageInfo');
+    if (pageInfo) {
+        pageInfo.textContent = `Toplam ${filteredPaymentLogs.length} işlemden ${startIndex + 1}-${endIndex} arası gösteriliyor (Sayfa ${currentPaymentPage} / ${totalPages})`;
+    }
+    
+    const prevBtn = document.getElementById('paymentPrevBtn');
+    const nextBtn = document.getElementById('paymentNextBtn');
+    if (prevBtn) prevBtn.disabled = currentPaymentPage <= 1;
+    if (nextBtn) nextBtn.disabled = currentPaymentPage >= totalPages;
+}
+
+function changePaymentPage(delta) {
+    const totalPages = Math.ceil(filteredPaymentLogs.length / PAYMENT_ITEMS_PER_PAGE) || 1;
+    currentPaymentPage += delta;
+    if (currentPaymentPage < 1) currentPaymentPage = 1;
+    if (currentPaymentPage > totalPages) currentPaymentPage = totalPages;
+    renderPaymentPage();
 }
 
 function openPaymentModal() {
