@@ -71,6 +71,7 @@ function showDashboard() {
 // ============================================
 
 let _uptBalanceInterval = null;
+let _lastUptBalanceRaw  = null; // Header widget için son baki ye
 
 async function loadUptBalance() {
     const textEl = document.getElementById('uptBalanceText');
@@ -81,7 +82,11 @@ async function loadUptBalance() {
         if (handleAdminApiResponse(res)) return;
         const data = await res.json();
         if (data.success && data.tryBalanceRaw != null) {
+            _lastUptBalanceRaw = data.tryBalanceRaw;
             textEl.textContent = `${data.tryBalanceRaw} TL`;
+            // Modal açıksa özet güncel bakiyeyi güncelle
+            const summaryEl = document.getElementById('uptSummaryBalance');
+            if (summaryEl) summaryEl.textContent = `${data.tryBalanceRaw} TL`;
         } else {
             textEl.textContent = data.error ? 'Hata' : '-';
         }
@@ -96,6 +101,7 @@ function startUptBalancePolling() {
     if (_uptBalanceInterval) clearInterval(_uptBalanceInterval);
     _uptBalanceInterval = setInterval(loadUptBalance, 60 * 1000); // 60sn
 }
+
 
 async function sendAdminOtp() {
     const phoneInput = document.getElementById('loginPhone');
@@ -827,6 +833,71 @@ let filteredPaymentLogs = [];
 let currentPaymentPage = 1;
 const PAYMENT_ITEMS_PER_PAGE = 30;
 
+// ─── Durum Kodu → Türkçe Açıklama Haritası ───────────────────────────────────────
+const BANK_STATUS_LABEL = {
+    'TR000':  'Sistem kuyruğuna alındı',
+    'TR001':  'Onay bekliyor',
+    'TR001A': 'Güvenlik kontrolünde',
+    'TR001E': 'Rezerve edildi',
+    'TR002A': 'Merkez onayında',
+    'TR004':  'Onaylandı, iletilecek',
+    'TR005C': 'İptal edildi',
+    'TR006':  'Reddedildi, iade bekleniyor',
+    'TR007':  'Reddedildi, iade yapıldı',
+    'TR008':  'Askıya alındı',
+    'TR010':  'Başarıyla tamamlandı',
+    'TR011':  'Başarılı (ödeme yapıldı)',
+    'TR012':  'Başarılı (kuruma iletildi)',
+    'TR013':  'Ön provizyon',
+    'TR003R': 'İade tamamlandı',
+    'PA010':  'Ödeme tamamlandı',
+    'PA012':  'Ödeme kuruma yapıldı',
+};
+
+// ─── İade Neden Kodu → Türkçe Açıklama Haritası ──────────────────────────────
+const RETURN_REASON_LABEL = {
+    '01': 'Alıcı hesabı kapalı',
+    '02': 'Alıcı hesap numarası hatalı veya bulunamadı',
+    '03': 'Hesap türü uyumsuz',
+    '04': 'İşlem limiti aşıldı',
+    '05': 'Alıcı tarafından reddedildi',
+    '06': 'IBAN format hatası',
+    '07': 'Banka şubesi bulunamadı',
+    '08': 'İşlem zaman aşımına uğradı',
+    '09': 'Banka sistem hatası',
+    '10': 'Alıcı hesabı para almaya kapalı',
+    '11': 'Alıcı adı ve IBAN bilgisi uyuşmuyor',
+    '12': 'IBAN geçersiz veya hatalı',
+    '13': 'Alıcı hesabı bloke',
+    '14': 'Yetersiz hesap bilgisi',
+    '15': 'İşlem tutarı geçersiz',
+};
+
+function getBankStatusLabel(code) {
+    return BANK_STATUS_LABEL[code] || null;
+}
+
+function getReturnReasonLabel(code) {
+    return RETURN_REASON_LABEL[String(code)] || null;
+}
+
+function getFriendlyStatusLabel(record) {
+    if (!record) return 'Bilinmiyor';
+    const s = record.status;
+    if (s === 'success')       return '✅ Başarılı — Para hesaba aktarıldı';
+    if (s === 'pending_bank')  {
+        const lbl = getBankStatusLabel(record.bank_status_code);
+        return lbl ? `⏳ Banka işliyor — ${lbl}` : '⏳ Banka onayı bekleniyor';
+    }
+    if (s === 'bank_returned') {
+        const reason = getReturnReasonLabel(record.return_reason_code);
+        return reason ? `❌ İade edildi — ${reason}` : '❌ Banka tarafından iade edildi';
+    }
+    if (s === 'error')         return '❌ Sistem hatası — İşlem yapılamadı';
+    if (s === 'refunded')      return '🔄 İade edildi';
+    return 'Bilinmiyor';
+}
+
 async function loadPaymentLogs() {
     const tableBody = document.getElementById('paymentTableBody');
     const emptyEl = document.getElementById('paymentEmpty');
@@ -834,7 +905,7 @@ async function loadPaymentLogs() {
     const paginationEl = document.getElementById('paymentPagination');
     if (!tableBody) return;
 
-    tableBody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding:20px;">Yükleniyor...</td></tr>';
+    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Yükleniyor...</td></tr>';
     if (paginationEl) paginationEl.style.display = 'none';
 
     // Toplam bakiyeyi asenkron olarak çek
@@ -847,6 +918,19 @@ async function loadPaymentLogs() {
 
         if (data.success) {
             allPaymentLogs = data.logs || [];
+
+            // Bekleyen işlem uyarısı
+            const pendingCount = allPaymentLogs.filter(l => l.status === 'pending_bank').length;
+            const pendingWarningEl = document.getElementById('paymentPendingWarning');
+            if (pendingWarningEl) {
+                if (pendingCount > 0) {
+                    pendingWarningEl.textContent = `⚠️ ${pendingCount} işlem banka onayı bekleniyor (pending_bank). Sistem otomatik kontrol ediyor.`;
+                    pendingWarningEl.style.display = 'block';
+                } else {
+                    pendingWarningEl.style.display = 'none';
+                }
+            }
+
             applyPaymentFilter();
             
             // Arama kutusuna listener ekle (zaten yoksa)
@@ -861,7 +945,7 @@ async function loadPaymentLogs() {
         }
     } catch (err) {
         console.error('[Admin] Ödeme kayıtları yüklenemedi:', err);
-        tableBody.innerHTML = `<tr><td colspan="6" style="text-align:center; color:var(--error); padding:20px;">Veriler yüklenirken hata oluştu:<br/><small>${err.message}</small></td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--error); padding:20px;">Veriler yüklenirken hata oluştu:<br/><small>${err.message}</small></td></tr>`;
     }
 }
 
@@ -932,14 +1016,34 @@ function renderPaymentPage() {
         const tr = document.createElement('tr');
         let statusClass = 'pending';
         let statusText = 'Bekliyor';
+        let isClickable = false;
         
-        if (log.status === 'success') { statusClass = 'success'; statusText = 'Başarılı'; }
-        else if (log.status === 'error') { statusClass = 'error'; statusText = 'Hatalı (Detay)'; }
-        else if (log.status === 'refunded') { statusClass = 'refunded'; statusText = 'İade Edildi'; }
+        if (log.status === 'success')       { statusClass = 'success';       statusText = 'Başarılı'; }
+        else if (log.status === 'pending_bank') { statusClass = 'pending';   statusText = '⏳ Banka Onayı'; isClickable = true; }
+        else if (log.status === 'bank_returned') { statusClass = 'refunded'; statusText = '❌ İade Edildi'; isClickable = true; }
+        else if (log.status === 'error')    { statusClass = 'error';         statusText = 'Hatalı'; isClickable = true; }
+        else if (log.status === 'refunded') { statusClass = 'refunded';      statusText = 'İade Edildi'; }
 
         const amountFormatted = parseFloat(log.amount || 0).toFixed(2).replace('.', ',') + ' ₺';
         const grossFormatted = parseFloat(log.gross_amount || 0).toFixed(2).replace('.', ',') + ' ₺';
         const dateFormatted = formatDate(new Date(log.created_at));
+        
+        // Türkçe banka durumu açıklaması
+        const bankStatusLabel = getBankStatusLabel(log.bank_status_code);
+        const bankCodeHtml = bankStatusLabel
+            ? `<div style="font-size:9px; color:var(--text-muted); margin-top:2px;">${bankStatusLabel}</div>`
+            : '';
+        
+        // Türkçe iade nedeni açıklaması
+        const returnReasonLabel = getReturnReasonLabel(log.return_reason_code);
+        const returnReasonHtml = returnReasonLabel
+            ? `<div style="font-size:9px; color:#f59e0b; margin-top:2px;">${returnReasonLabel}</div>`
+            : '';
+
+        // Hata/İade detayını tıklanabilir yap
+        const errorDetail = (log.error_message || returnReasonLabel)
+            ? `onclick="showPaymentDetail(${log.id})" style="cursor:pointer;"`
+            : '';
 
         tr.innerHTML = `
             <td>
@@ -951,7 +1055,7 @@ function renderPaymentPage() {
             <td style="font-weight: 700; color: var(--success);">${amountFormatted}</td>
             <td style="color: var(--text-muted); font-size: 11px;">${grossFormatted}</td>
             <td>
-                <span class="status-pill ${statusClass}" ${log.status === 'error' ? `onclick="showErrorModal('${escapeHtml(log.error_message || 'Bilinmeyen hata')}')"` : ''}>
+                <span class="status-pill ${statusClass}" ${errorDetail} title="Detay için tıklayın">
                     ${statusText}
                 </span>
             </td>
@@ -996,10 +1100,39 @@ function showErrorModal(message) {
     const modal = document.getElementById('errorDetailModal');
     const textEl = document.getElementById('errorDetailText');
     if (!modal || !textEl) return;
-
     textEl.textContent = message;
     modal.style.display = 'flex';
 }
+
+/**
+ * İşlem detayını Türkçe olarak gösterir.
+ * Teknik kod yerine anlaşılır açıklama görüntülenir.
+ */
+function showPaymentDetail(logId) {
+    const log = allPaymentLogs.find(l => l.id === logId);
+    if (!log) return;
+    const modal = document.getElementById('errorDetailModal');
+    const textEl = document.getElementById('errorDetailText');
+    if (!modal || !textEl) return;
+
+    const statusLabel = getFriendlyStatusLabel(log);
+    const returnReason = getReturnReasonLabel(log.return_reason_code);
+    const bankStatus = getBankStatusLabel(log.bank_status_code);
+
+    let detail = statusLabel;
+    if (returnReason && log.status === 'bank_returned') {
+        detail += `\n\nIade Nedeni: ${returnReason}`;
+    }
+    if (bankStatus && log.bank_status_code && !returnReason) {
+        detail += `\n\nBanka Durumu: ${bankStatus}`;
+    }
+    if (log.yandex_refund_at) {
+        detail += `\n\n🔄 Yandex bakiyeniz iade edildi.`;
+    }
+    textEl.textContent = detail;
+    modal.style.display = 'flex';
+}
+
 
 function closeErrorModal() {
     const modal = document.getElementById('errorDetailModal');
