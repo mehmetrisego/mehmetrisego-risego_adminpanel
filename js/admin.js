@@ -1338,7 +1338,11 @@ async function saveAdminBankAccount() {
     const ibanInput = document.getElementById('adminIbanInput').value;
     const holderInput = document.getElementById('adminHolderInput').value.trim();
     
-    const iban = 'TR' + ibanInput.replace(/\s+/g, '');
+    let cleanIban = ibanInput.replace(/\s+/g, '').toUpperCase();
+    if (cleanIban.startsWith('TR')) {
+        cleanIban = cleanIban.substring(2);
+    }
+    const iban = 'TR' + cleanIban;
     
     if (iban.length !== 26) {
         alert('Lütfen geçerli bir TR IBAN numarası giriniz (TR + 24 hane).');
