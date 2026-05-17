@@ -1046,9 +1046,12 @@ function renderPaymentPage() {
             : '';
 
         tr.innerHTML = `
-            <td>
+            <td style="position: relative; padding-right: 32px;">
                 <div style="font-weight: 600; color: var(--text);">${escapeHtml(log.beneficiary_name || 'Bilinmiyor')}</div>
                 <div style="font-size: 10px; color: var(--text-muted);">ID: ${log.driver_id}</div>
+                <button onclick="openAdminBankAccountsModal('${log.driver_id}', '${escapeHtml(log.beneficiary_name || 'Sürücü')}')" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background:none; border:none; color:var(--gold); cursor:pointer; padding:4px; display:flex;" title="Banka Bilgilerini Düzenle">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
+                </button>
             </td>
             <td style="font-family: monospace; font-size: 11px;">${escapeHtml(log.beneficiary_iban || '-')}</td>
             <td style="font-family: monospace; font-size: 11px; color: var(--text-muted);">${escapeHtml(log.tu_ref_number || '-')}</td>
@@ -1207,4 +1210,231 @@ function updateKillswitchUI(isActive) {
         btn.style.color = '#22c55e';
         text.textContent = 'Açık';
     }
+}
+
+// ============================================
+// Sürücü Banka Hesapları Yönetimi (Admin CRUD)
+// ============================================
+
+let currentAdminDriverId = '';
+let currentAdminDriverName = '';
+let adminDriverBankAccounts = [];
+
+function openAdminBankAccountsModal(driverId, driverName) {
+    currentAdminDriverId = driverId;
+    currentAdminDriverName = driverName;
+    
+    const modal = document.getElementById('adminBankAccountsModal');
+    const infoEl = document.getElementById('adminBankAccountDriverInfo');
+    
+    if (!modal || !infoEl) return;
+    
+    infoEl.textContent = `Sürücü: ${driverName} (ID: ${driverId})`;
+    resetAdminBankAccountForm();
+    modal.style.display = 'flex';
+    
+    loadAdminBankAccounts(driverId);
+}
+
+function closeAdminBankAccountsModal() {
+    const modal = document.getElementById('adminBankAccountsModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function loadAdminBankAccounts(driverId) {
+    const listEl = document.getElementById('adminBankAccountsList');
+    if (!listEl) return;
+    
+    listEl.innerHTML = '<div style="text-align:center; padding:10px; color:var(--text-secondary);">Yükleniyor...</div>';
+    
+    try {
+        const res = await fetch(`${API_BASE}/admin/drivers/${driverId}/bank-accounts`, {
+            headers: getAdminHeaders()
+        });
+        if (handleAdminApiResponse(res)) return;
+        const data = await res.json();
+        
+        if (data.success && data.accounts) {
+            adminDriverBankAccounts = data.accounts;
+            renderAdminBankAccountsList();
+        } else {
+            listEl.innerHTML = '<div style="text-align:center; padding:10px; color:var(--error);">Hesaplar alınamadı.</div>';
+        }
+    } catch (e) {
+        console.error('[Admin] Banka hesapları yüklenemedi:', e);
+        listEl.innerHTML = '<div style="text-align:center; padding:10px; color:var(--error);">Bağlantı hatası.</div>';
+    }
+}
+
+function renderAdminBankAccountsList() {
+    const listEl = document.getElementById('adminBankAccountsList');
+    if (!listEl) return;
+    
+    listEl.innerHTML = '';
+    
+    if (adminDriverBankAccounts.length === 0) {
+        listEl.innerHTML = '<p style="text-align:center; color:var(--text-muted); font-size:13px; padding:15px; background:rgba(255,255,255,0.03); border-radius:6px;">Sürücüye ait kayıtlı banka hesabı bulunmamaktadır.</p>';
+        return;
+    }
+    
+    adminDriverBankAccounts.forEach(account => {
+        const item = document.createElement('div');
+        item.style.cssText = 'display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:rgba(255,255,255,0.03); border:1px solid var(--border-color); border-radius:8px; margin-bottom:8px;';
+        
+        // Format IBAN (TRXX XXXX...)
+        const rawIban = account.iban || '';
+        let formattedIban = rawIban;
+        if (rawIban.startsWith('TR') && rawIban.length === 26) {
+            const d = rawIban.slice(2);
+            formattedIban = 'TR' + d.substring(0, 2) + ' ' + d.substring(2, 6) + ' ' + d.substring(6, 10) + ' ' + d.substring(10, 14) + ' ' + d.substring(14, 18) + ' ' + d.substring(18, 22) + ' ' + d.substring(22, 24);
+        }
+        
+        item.innerHTML = `
+            <div style="flex:1;">
+                <div style="font-weight:600; font-size:14px; color:var(--text);">${escapeHtml(account.accountHolderName)}</div>
+                <div style="font-family:monospace; font-size:12px; color:var(--gold); margin-top:2px;">${escapeHtml(formattedIban)}</div>
+            </div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" style="padding:4px 8px; font-size:12px; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.2); color:var(--gold);" onclick="editAdminBankAccount(${account.id}, '${escapeHtml(account.iban)}', '${escapeHtml(account.accountHolderName)}')">Düzenle</button>
+                <button class="btn" style="padding:4px 8px; font-size:12px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2); color:#ef4444;" onclick="deleteAdminBankAccount(${account.id})">Sil</button>
+            </div>
+        `;
+        listEl.appendChild(item);
+    });
+}
+
+function resetAdminBankAccountForm() {
+    document.getElementById('editAccountId').value = '';
+    document.getElementById('adminIbanInput').value = '';
+    document.getElementById('adminHolderInput').value = '';
+    document.getElementById('adminFormTitle').textContent = 'Yeni Hesap Ekle';
+    document.getElementById('adminCancelBtn').style.display = 'none';
+}
+
+function editAdminBankAccount(accountId, iban, name) {
+    document.getElementById('editAccountId').value = accountId;
+    
+    // Format IBAN for input field
+    const rawIban = iban.replace(/^TR/i, '').replace(/\D/g, '');
+    let parts = [];
+    if (rawIban.length > 0) parts.push(rawIban.substring(0, 2));
+    if (rawIban.length > 2) parts.push(rawIban.substring(2, 6));
+    if (rawIban.length > 6) parts.push(rawIban.substring(6, 10));
+    if (rawIban.length > 10) parts.push(rawIban.substring(10, 14));
+    if (rawIban.length > 14) parts.push(rawIban.substring(14, 18));
+    if (rawIban.length > 18) parts.push(rawIban.substring(18, 22));
+    if (rawIban.length > 22) parts.push(rawIban.substring(22, 24));
+    
+    document.getElementById('adminIbanInput').value = parts.join(' ');
+    document.getElementById('adminHolderInput').value = name;
+    
+    document.getElementById('adminFormTitle').textContent = 'Hesabı Düzenle';
+    document.getElementById('adminCancelBtn').style.display = 'inline-flex';
+    document.getElementById('adminIbanInput').focus();
+}
+
+async function saveAdminBankAccount() {
+    const accountId = document.getElementById('editAccountId').value;
+    const ibanInput = document.getElementById('adminIbanInput').value;
+    const holderInput = document.getElementById('adminHolderInput').value.trim();
+    
+    const iban = 'TR' + ibanInput.replace(/\s+/g, '');
+    
+    if (iban.length !== 26) {
+        alert('Lütfen geçerli bir TR IBAN numarası giriniz (TR + 24 hane).');
+        return;
+    }
+    
+    if (!holderInput) {
+        alert('Lütfen hesap sahibinin adını soyadını yazın.');
+        return;
+    }
+    
+    const isEdit = !!accountId;
+    const url = isEdit 
+        ? `${API_BASE}/admin/bank-accounts/${accountId}`
+        : `${API_BASE}/admin/drivers/${currentAdminDriverId}/bank-accounts`;
+    
+    const method = isEdit ? 'PUT' : 'POST';
+    
+    try {
+        const res = await fetch(url, {
+            method,
+            headers: getAdminHeaders(),
+            body: JSON.stringify({
+                iban,
+                accountHolderName: holderInput
+            })
+        });
+        
+        if (handleAdminApiResponse(res)) return;
+        const data = await res.json();
+        
+        if (data.success) {
+            resetAdminBankAccountForm();
+            loadAdminBankAccounts(currentAdminDriverId);
+            showToast('success', isEdit ? 'Banka hesabı güncellendi!' : 'Yeni hesap eklendi!');
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (e) {
+        console.error('[Admin] Hesap kaydedilemedi:', e);
+        alert('İşlem sırasında bağlantı hatası oluştu.');
+    }
+}
+
+async function deleteAdminBankAccount(accountId) {
+    if (!confirm('Bu banka hesabını silmek istediğinize emin misiniz?')) return;
+    
+    try {
+        const res = await fetch(`${API_BASE}/admin/bank-accounts/${accountId}`, {
+            method: 'DELETE',
+            headers: getAdminHeaders()
+        });
+        
+        if (handleAdminApiResponse(res)) return;
+        const data = await res.json();
+        
+        if (data.success) {
+            loadAdminBankAccounts(currentAdminDriverId);
+            showToast('success', 'Banka hesabı başarıyla silindi.');
+        } else {
+            alert('Hata: ' + data.message);
+        }
+    } catch (e) {
+        console.error('[Admin] Hesap silinemedi:', e);
+        alert('Silme işlemi sırasında hata oluştu.');
+    }
+}
+
+function formatAdminIbanInput(input) {
+    const digits = String(input.value || '').replace(/\D/g, '').slice(0, 24);
+    
+    let parts = [];
+    if (digits.length > 0) parts.push(digits.substring(0, 2));
+    if (digits.length > 2) parts.push(digits.substring(2, 6));
+    if (digits.length > 6) parts.push(digits.substring(6, 10));
+    if (digits.length > 10) parts.push(digits.substring(10, 14));
+    if (digits.length > 14) parts.push(digits.substring(14, 18));
+    if (digits.length > 18) parts.push(digits.substring(18, 22));
+    if (digits.length > 22) parts.push(digits.substring(22, 24));
+    
+    input.value = parts.join(' ');
+}
+
+function handleAdminIbanPaste(event, input) {
+    event.preventDefault();
+    const pasted = (event.clipboardData || window.clipboardData).getData('text');
+    const digits = pasted.replace(/^TR/i, '').replace(/\D/g, '').slice(0, 24);
+    
+    let parts = [];
+    if (digits.length > 0) parts.push(digits.substring(0, 2));
+    if (digits.length > 2) parts.push(digits.substring(2, 6));
+    if (digits.length > 6) parts.push(digits.substring(6, 10));
+    if (digits.length > 10) parts.push(digits.substring(10, 14));
+    if (digits.length > 14) parts.push(digits.substring(14, 18));
+    if (digits.length > 18) parts.push(digits.substring(18, 22));
+    if (digits.length > 22) parts.push(digits.substring(22, 24));
+    
+    input.value = parts.join(' ');
 }

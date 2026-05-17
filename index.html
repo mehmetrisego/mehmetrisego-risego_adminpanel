@@ -362,6 +362,45 @@
                 </div>
             </div>
         </div>
+
+        <!-- Sürücü Banka Hesapları Yönetim Modali -->
+        <div class="modal" id="adminBankAccountsModal" style="display:none">
+            <div class="modal-content" style="max-width: 600px; width: 90%;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Sürücü Banka Hesapları</h3>
+                    <button class="btn-close-modal" onclick="closeAdminBankAccountsModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="adminBankAccountDriverInfo" style="font-weight: 600; margin-bottom: 15px; color: var(--text);"></p>
+                    
+                    <!-- Banka hesap listesi -->
+                    <div id="adminBankAccountsList"></div>
+                    
+                    <!-- Hesap ekleme / düzenleme formu -->
+                    <div id="adminBankAccountForm" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                        <h4 id="adminFormTitle" style="margin-bottom: 12px; color: var(--gold); font-size: 15px;">Yeni Hesap Ekle</h4>
+                        <input type="hidden" id="editAccountId">
+                        <div style="display: flex; flex-direction: column; gap: 12px;">
+                            <div>
+                                <label class="input-label" for="adminIbanInput">IBAN</label>
+                                <input type="text" id="adminIbanInput" class="login-input" placeholder="TR00 0000 0000 0000 0000 0000 00" maxlength="32" oninput="formatAdminIbanInput(this)" onpaste="handleAdminIbanPaste(event, this)">
+                            </div>
+                            <div>
+                                <label class="input-label" for="adminHolderInput">Hesap Sahibi Adı Soyadı</label>
+                                <input type="text" id="adminHolderInput" class="login-input" placeholder="Hesap Sahibi Adı Soyadı">
+                            </div>
+                            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                                <button class="btn-approve" onclick="saveAdminBankAccount()" style="flex: 1; height: 42px; display: flex; justify-content: center; align-items: center;">Kaydet</button>
+                                <button class="btn-delete" id="adminCancelBtn" onclick="resetAdminBankAccountForm()" style="flex: 1; display: none; height: 42px; justify-content: center; align-items: center;">Vazgeç</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal-close" onclick="closeAdminBankAccountsModal()">Kapat</button>
+                </div>
+            </div>
+        </div>
         </div>
 
         <!-- Footer -->
