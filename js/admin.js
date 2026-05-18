@@ -538,6 +538,8 @@ function fillParkSelectError(selectId) {
     sel.innerHTML = '<option value="">Park listesi alınamadı</option>';
 }
 
+let adminAvailableParks = [];
+
 /**
  * Yandex park listesini yükler (sıralama + kampanya şehir seçimi)
  */
@@ -553,6 +555,7 @@ async function loadAdminParks() {
             fillParkSelectError('campaignCity');
             return;
         }
+        adminAvailableParks = data.parks;
         fillParkSelectFromData('leaderboardCity', data.parks, prevLb);
         fillParkSelectFromData('campaignCity', data.parks, prevCamp);
     } catch (e) {
@@ -1146,7 +1149,7 @@ function closeErrorModal() {
 // KILLSWITCH MANTIĞI
 // ============================================
 
-let currentKillswitchState = false;
+let currentSuspendedCities = [];
 
 async function loadKillswitchStatus() {
     try {
@@ -1154,34 +1157,63 @@ async function loadKillswitchStatus() {
         if (res.status === 401 || res.status === 403) return;
         const data = await res.json();
         if (data.success) {
-            updateKillswitchUI(data.active);
+            updateKillswitchUI(data.suspendedCities);
         }
     } catch (e) {
         console.error('[Admin] Killswitch durumu okunamadı:', e.message);
     }
 }
 
+function openKillswitchModal() {
+    const container = document.getElementById('killswitchCitiesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!adminAvailableParks || adminAvailableParks.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); font-size:14px;">Şehir listesi yüklenemedi.</p>';
+    } else {
+        adminAvailableParks.forEach(park => {
+            const isChecked = currentSuspendedCities.includes(park.partnerId) ? 'checked' : '';
+            container.innerHTML += `
+                <div style="margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text);">
+                        <input type="checkbox" class="killswitch-city-cb" value="${park.partnerId}" ${isChecked} style="width:16px; height:16px;">
+                        ${escapeHtml(park.label)}
+                    </label>
+                </div>
+            `;
+        });
+    }
+    
+    document.getElementById('killswitchModal').style.display = 'flex';
+}
+
+function closeKillswitchModal() {
+    document.getElementById('killswitchModal').style.display = 'none';
+}
+
 async function toggleKillswitch() {
-    const newState = !currentKillswitchState;
-    const confirmMsg = newState 
-        ? "DİKKAT: Para çekme işlemlerini ASKIYA ALMAK (Durdurmak) istediğinize emin misiniz?" 
-        : "Para çekme işlemlerini tekrar AKTİF ETMEK istediğinize emin misiniz?";
-        
-    if (!confirm(confirmMsg)) return;
+    openKillswitchModal();
+}
+
+async function saveKillswitch() {
+    const checkboxes = document.querySelectorAll('.killswitch-city-cb:checked');
+    const newSuspended = Array.from(checkboxes).map(cb => cb.value);
 
     try {
         const res = await fetch(`${API_BASE}/admin/killswitch`, {
             method: 'POST',
             headers: getAdminHeaders(),
-            body: JSON.stringify({ active: newState })
+            body: JSON.stringify({ suspendedCities: newSuspended })
         });
         
         if (handleAdminApiResponse(res)) return;
         
         const data = await res.json();
         if (data.success) {
-            updateKillswitchUI(data.active);
-            alert(data.message);
+            updateKillswitchUI(data.suspendedCities);
+            closeKillswitchModal();
+            showToast('success', data.message || 'Kısıtlamalar güncellendi.');
         } else {
             alert('Hata: ' + data.message);
         }
@@ -1191,24 +1223,24 @@ async function toggleKillswitch() {
     }
 }
 
-function updateKillswitchUI(isActive) {
-    currentKillswitchState = isActive;
+function updateKillswitchUI(suspendedCities) {
+    currentSuspendedCities = suspendedCities || [];
     const btn = document.getElementById('killswitchBtn');
     const text = document.getElementById('killswitchStatusText');
     if (!btn || !text) return;
 
-    if (isActive) {
+    if (currentSuspendedCities.length > 0) {
         // ASKIYA ALINDI (Kırmızı)
         btn.style.background = 'rgba(239, 68, 68, 0.1)';
         btn.style.border = '1px solid rgba(239, 68, 68, 0.2)';
         btn.style.color = '#ef4444';
-        text.textContent = 'Durduruldu';
+        text.textContent = `Askıda (${currentSuspendedCities.length})`;
     } else {
         // AKTİF (Yeşil)
         btn.style.background = 'rgba(34, 197, 94, 0.1)';
         btn.style.border = '1px solid rgba(34, 197, 94, 0.2)';
         btn.style.color = '#22c55e';
-        text.textContent = 'Açık';
+        text.textContent = 'Açık (Tümü)';
     }
 }
 

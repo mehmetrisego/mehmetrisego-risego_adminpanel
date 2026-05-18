@@ -363,6 +363,27 @@
             </div>
         </div>
 
+        <!-- Killswitch Modal (Askıya Alınan Şehirler) -->
+        <div class="modal" id="killswitchModal" style="display:none">
+            <div class="modal-content" style="max-width: 500px; width: 90%;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Para Çekme İşlemlerini Durdur</h3>
+                    <button class="btn-close-modal" onclick="closeKillswitchModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 15px; color: var(--text-secondary); font-size: 14px;">Para çekme işlemlerini askıya almak istediğiniz şehirleri seçin. Seçilen şehirlerdeki sürücüler geçici bir süre para çekemeyecektir.</p>
+                    <div id="killswitchCitiesContainer" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
+                    
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button class="btn-approve" onclick="saveKillswitch()" style="flex: 1; height: 42px; display: flex; justify-content: center; align-items: center;">Ayarları Kaydet</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal-close" onclick="closeKillswitchModal()">Vazgeç</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Sürücü Banka Hesapları Yönetim Modali -->
         <div class="modal" id="adminBankAccountsModal" style="display:none">
             <div class="modal-content" style="max-width: 600px; width: 90%;">
