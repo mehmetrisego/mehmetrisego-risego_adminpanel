@@ -1,42 +1,10 @@
 // ============================================
-// RiseGo Admin Panel - JavaScript
+// RiseGo Admin Panel - Ana Uygulama
 // ============================================
-// API: yerelde localhost; üretimde AWS Lightsail.
-const PRODUCTION_API = 'https://api.risegodriver.com/api';
-const API_BASE = (function () {
-    if (typeof window === 'undefined') return PRODUCTION_API;
-    const h = window.location.hostname;
-    const isLocalDev = h === 'localhost' || h === '127.0.0.1';
-    if (isLocalDev) return `http://${h}:3000/api`;
-    return PRODUCTION_API;
-})();
-
-const ADMIN_TOKEN_KEY = 'risego_admin_token';
-
-function getAdminToken() {
-    return localStorage.getItem(ADMIN_TOKEN_KEY);
-}
-
-function setAdminToken(token) {
-    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
-    else localStorage.removeItem(ADMIN_TOKEN_KEY);
-}
-
-function getAdminHeaders() {
-    const headers = { 'Content-Type': 'application/json' };
-    const token = getAdminToken();
-    if (token) headers['X-Admin-Token'] = token;
-    return headers;
-}
-
-function handleAdminApiResponse(response) {
-    if (response.status === 401) {
-        setAdminToken(null);
-        showLoginScreen();
-        return true;
-    }
-    return false;
-}
+// Bağımlılık: admin-utils.js önce yüklenmiş olmalı
+// (API_BASE, getAdminToken, setAdminToken, getAdminHeaders,
+//  handleAdminApiResponse, formatIban, formatDate, escapeHtml,
+//  showToast, BANK_STATUS_LABEL, getBankStatusLabel, vb.)
 
 // ============================================
 // Admin Auth - OTP Giriş
@@ -799,33 +767,8 @@ function changeLeaderboardPage(delta) {
 // ============================================
 // Yardımcı Fonksiyonlar
 // ============================================
-
-/**
- * Tarih formatlar
- * @param {Date} date
- * @returns {string}
- */
-function formatDate(date) {
-    const months = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-        'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
-    const day = date.getDate();
-    const month = months[date.getMonth()];
-    const year = date.getFullYear();
-    const hours = String(date.getHours()).padStart(2, '0');
-    const minutes = String(date.getMinutes()).padStart(2, '0');
-    return `${day} ${month} ${year}, ${hours}:${minutes}`;
-}
-
-/**
- * HTML XSS koruması
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-}
+// Not: formatDate, escapeHtml, getBankStatusLabel, getReturnReasonLabel,
+// getFriendlyStatusLabel artık admin-utils.js'den geliyor.
 
 // ============================================
 // Çekim Talepleri (Payment Logs) Yönetimi
@@ -835,71 +778,6 @@ let allPaymentLogs = [];
 let filteredPaymentLogs = [];
 let currentPaymentPage = 1;
 const PAYMENT_ITEMS_PER_PAGE = 30;
-
-// ─── Durum Kodu → Türkçe Açıklama Haritası ───────────────────────────────────────
-const BANK_STATUS_LABEL = {
-    'TR000':  'Sistem kuyruğuna alındı',
-    'TR001':  'Onay bekliyor',
-    'TR001A': 'Güvenlik kontrolünde',
-    'TR001E': 'Rezerve edildi',
-    'TR002A': 'Merkez onayında',
-    'TR004':  'Onaylandı, iletilecek',
-    'TR005C': 'İptal edildi',
-    'TR006':  'Reddedildi, iade bekleniyor',
-    'TR007':  'Reddedildi, iade yapıldı',
-    'TR008':  'Askıya alındı',
-    'TR010':  'Başarıyla tamamlandı',
-    'TR011':  'Başarılı (ödeme yapıldı)',
-    'TR012':  'Başarılı (kuruma iletildi)',
-    'TR013':  'Ön provizyon',
-    'TR003R': 'İade tamamlandı',
-    'PA010':  'Ödeme tamamlandı',
-    'PA012':  'Ödeme kuruma yapıldı',
-};
-
-// ─── İade Neden Kodu → Türkçe Açıklama Haritası ──────────────────────────────
-const RETURN_REASON_LABEL = {
-    '01': 'Alıcı hesabı kapalı',
-    '02': 'Alıcı hesap numarası hatalı veya bulunamadı',
-    '03': 'Hesap türü uyumsuz',
-    '04': 'İşlem limiti aşıldı',
-    '05': 'Alıcı tarafından reddedildi',
-    '06': 'IBAN format hatası',
-    '07': 'Banka şubesi bulunamadı',
-    '08': 'İşlem zaman aşımına uğradı',
-    '09': 'Banka sistem hatası',
-    '10': 'Alıcı hesabı para almaya kapalı',
-    '11': 'Alıcı adı ve IBAN bilgisi uyuşmuyor',
-    '12': 'IBAN geçersiz veya hatalı',
-    '13': 'Alıcı hesabı bloke',
-    '14': 'Yetersiz hesap bilgisi',
-    '15': 'İşlem tutarı geçersiz',
-};
-
-function getBankStatusLabel(code) {
-    return BANK_STATUS_LABEL[code] || null;
-}
-
-function getReturnReasonLabel(code) {
-    return RETURN_REASON_LABEL[String(code)] || null;
-}
-
-function getFriendlyStatusLabel(record) {
-    if (!record) return 'Bilinmiyor';
-    const s = record.status;
-    if (s === 'success')       return '✅ Başarılı — Para hesaba aktarıldı';
-    if (s === 'pending_bank')  {
-        const lbl = getBankStatusLabel(record.bank_status_code);
-        return lbl ? `⏳ Banka işliyor — ${lbl}` : '⏳ Banka onayı bekleniyor';
-    }
-    if (s === 'bank_returned') {
-        const reason = getReturnReasonLabel(record.return_reason_code);
-        return reason ? `❌ İade edildi — ${reason}` : '❌ Banka tarafından iade edildi';
-    }
-    if (s === 'error')         return '❌ Sistem hatası — İşlem yapılamadı';
-    if (s === 'refunded')      return '🔄 İade edildi';
-    return 'Bilinmiyor';
-}
 
 async function loadPaymentLogs() {
     const tableBody = document.getElementById('paymentTableBody');
@@ -1443,34 +1321,4 @@ async function deleteAdminBankAccount(accountId) {
     }
 }
 
-function formatAdminIbanInput(input) {
-    const digits = String(input.value || '').replace(/\D/g, '').slice(0, 24);
-    
-    let parts = [];
-    if (digits.length > 0) parts.push(digits.substring(0, 2));
-    if (digits.length > 2) parts.push(digits.substring(2, 6));
-    if (digits.length > 6) parts.push(digits.substring(6, 10));
-    if (digits.length > 10) parts.push(digits.substring(10, 14));
-    if (digits.length > 14) parts.push(digits.substring(14, 18));
-    if (digits.length > 18) parts.push(digits.substring(18, 22));
-    if (digits.length > 22) parts.push(digits.substring(22, 24));
-    
-    input.value = parts.join(' ');
-}
-
-function handleAdminIbanPaste(event, input) {
-    event.preventDefault();
-    const pasted = (event.clipboardData || window.clipboardData).getData('text');
-    const digits = pasted.replace(/^TR/i, '').replace(/\D/g, '').slice(0, 24);
-    
-    let parts = [];
-    if (digits.length > 0) parts.push(digits.substring(0, 2));
-    if (digits.length > 2) parts.push(digits.substring(2, 6));
-    if (digits.length > 6) parts.push(digits.substring(6, 10));
-    if (digits.length > 10) parts.push(digits.substring(10, 14));
-    if (digits.length > 14) parts.push(digits.substring(14, 18));
-    if (digits.length > 18) parts.push(digits.substring(18, 22));
-    if (digits.length > 22) parts.push(digits.substring(22, 24));
-    
-    input.value = parts.join(' ');
-}
+// formatAdminIbanInput ve handleAdminIbanPaste artık admin-utils.js'den geliyor.
