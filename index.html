@@ -75,39 +75,39 @@
                     </div>
                 </div>
             </div>
-            <div class="header-right" style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: flex-end;">
-                <div class="header-status" id="serverStatus" style="white-space: nowrap;">
+            <div class="header-right">
+                <div class="header-status" id="serverStatus">
                     <span class="status-dot"></span>
                     <span class="status-text">Bağlanıyor...</span>
                 </div>
-                <div class="header-status session-badge" id="driverSessionStatus" style="background: rgba(14, 165, 233, 0.1); border: 1px solid rgba(14, 165, 233, 0.2); color: #0ea5e9; white-space: nowrap;">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right: 4px;">
+                <button class="header-status session-badge badge-blue" id="driverSessionStatus" onclick="openSyncModal()" title="Sürücü listesini Yandex ile senkronize et">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                         <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <circle cx="12" cy="7" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    Aktif: <span id="activeSessionsCount" style="font-weight: bold; margin-left: 4px;">0</span>
-                </div>
+                    Aktif: <span id="activeSessionsCount">0</span>
+                </button>
                 <!-- UPT Kurumsal Cüzdan Bakiyesi -->
-                <div class="header-status session-badge" id="uptBalanceStatus" style="background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); color: #22c55e; cursor:pointer; white-space: nowrap;" onclick="loadUptBalance()">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right: 4px;">
+                <button class="header-status session-badge badge-green" id="uptBalanceStatus" onclick="loadUptBalance()" title="Cüzdan bakiyesini yenile">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                         <rect x="2" y="7" width="20" height="14" rx="2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    UPT: <span id="uptBalanceText" style="font-weight: bold; margin-left: 4px;">...</span>
-                </div>
+                    UPT: <span id="uptBalanceText">...</span>
+                </button>
                 <!-- Çekim Geçmişi Butonu -->
-                <button class="header-status session-badge" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2); color: var(--gold); cursor:pointer; white-space: nowrap;" onclick="openPaymentModal()" title="Çekim taleplerini görüntüle">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right: 4px;">
+                <button class="header-status session-badge badge-gold" onclick="openPaymentModal()" title="Çekim taleplerini görüntüle">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                         <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     İşlemler
                 </button>
                 <!-- Killswitch Butonu -->
-                <button class="header-status session-badge" id="killswitchBtn" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); color: #22c55e; cursor:pointer; white-space: nowrap;" onclick="toggleKillswitch()" title="Para çekme işlemlerini askıya al / aktif et">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" style="margin-right: 4px;">
+                <button class="header-status session-badge badge-green" id="killswitchBtn" onclick="toggleKillswitch()" title="Para çekme işlemlerini askıya al / aktif et">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                         <path d="M18.36 6.64a9 9 0 1 1-12.73 0M12 2v10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
-                    Sistem: <span id="killswitchStatusText" style="font-weight: bold; margin-left: 4px;">Açık</span>
+                    Sistem: <span id="killswitchStatusText">Açık</span>
                 </button>
                 <button class="btn-logout" id="btnLogout" onclick="adminLogout()" title="Çıkış yap">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
@@ -380,6 +380,27 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn-modal-close" onclick="closeKillswitchModal()">Vazgeç</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sürücü Senkronizasyon Modali -->
+        <div class="modal" id="syncModal" style="display:none">
+            <div class="modal-content" style="max-width: 500px; width: 90%;">
+                <div class="modal-header">
+                    <h3 class="modal-title">Sürücü Listesini Yandex ile Eşitle</h3>
+                    <button class="btn-close-modal" onclick="closeSyncModal()">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 15px; color: var(--text-secondary); font-size: 14px;">Yandex Fleet'e yeni eklenen sürücüleri ve araç plakalarını veritabanımıza senkronize etmek istediğiniz şehirleri seçin. Sadece seçtiğiniz şehirlerdeki eksik sürücüler çekilecektir.</p>
+                    <div id="syncCitiesContainer" style="max-height: 300px; overflow-y: auto; padding-right: 5px;"></div>
+                    
+                    <div style="margin-top: 20px; display: flex; gap: 10px;">
+                        <button class="btn-approve" id="btnRunSync" onclick="runSync()" style="flex: 1; height: 42px; display: flex; justify-content: center; align-items: center;">Senkronizasyonu Başlat</button>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-modal-close" onclick="closeSyncModal()">Kapat</button>
                 </div>
             </div>
         </div>

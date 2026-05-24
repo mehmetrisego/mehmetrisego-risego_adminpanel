@@ -1107,18 +1107,93 @@ function updateKillswitchUI(suspendedCities) {
     const text = document.getElementById('killswitchStatusText');
     if (!btn || !text) return;
 
+    // Reset any inline styles that might interfere
+    btn.style.background = '';
+    btn.style.border = '';
+    btn.style.color = '';
+
     if (currentSuspendedCities.length > 0) {
-        // ASKIYA ALINDI (Kırmızı)
-        btn.style.background = 'rgba(239, 68, 68, 0.1)';
-        btn.style.border = '1px solid rgba(239, 68, 68, 0.2)';
-        btn.style.color = '#ef4444';
+        btn.classList.add('badge-red');
+        btn.classList.remove('badge-green');
         text.textContent = `Askıda (${currentSuspendedCities.length})`;
     } else {
-        // AKTİF (Yeşil)
-        btn.style.background = 'rgba(34, 197, 94, 0.1)';
-        btn.style.border = '1px solid rgba(34, 197, 94, 0.2)';
-        btn.style.color = '#22c55e';
+        btn.classList.add('badge-green');
+        btn.classList.remove('badge-red');
         text.textContent = 'Açık (Tümü)';
+    }
+}
+
+// ============================================
+// SÜRÜCÜ MANUEL SENKRONİZASYON (YANDEX -> DB)
+// ============================================
+
+function openSyncModal() {
+    const container = document.getElementById('syncCitiesContainer');
+    if (!container) return;
+    container.innerHTML = '';
+    
+    if (!adminAvailableParks || adminAvailableParks.length === 0) {
+        container.innerHTML = '<p style="color:var(--text-muted); font-size:14px;">Şehir listesi yüklenemedi.</p>';
+    } else {
+        adminAvailableParks.forEach(park => {
+            container.innerHTML += `
+                <div style="margin-bottom: 12px; padding: 10px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 6px;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; color: var(--text);">
+                        <input type="checkbox" class="sync-city-cb" value="${park.partnerId}" style="width:16px; height:16px;">
+                        ${escapeHtml(park.label)}
+                    </label>
+                </div>
+            `;
+        });
+    }
+    
+    const modal = document.getElementById('syncModal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeSyncModal() {
+    const modal = document.getElementById('syncModal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function runSync() {
+    const checkboxes = document.querySelectorAll('.sync-city-cb:checked');
+    if (checkboxes.length === 0) {
+        alert('Lütfen senkronize edilecek en az bir şehir seçin.');
+        return;
+    }
+    
+    const selectedParkIds = Array.from(checkboxes).map(cb => cb.value);
+    
+    const btn = document.getElementById('btnRunSync');
+    if (!btn) return;
+    
+    const originalText = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Senkronize Ediliyor...';
+    
+    try {
+        const res = await fetch(`${API_BASE}/admin/sync-drivers`, {
+            method: 'POST',
+            headers: getAdminHeaders(),
+            body: JSON.stringify({ parkIds: selectedParkIds })
+        });
+        
+        if (handleAdminApiResponse(res)) return;
+        
+        const data = await res.json();
+        if (data.success) {
+            alert(`Senkronizasyon Başarılı!\nEklendi: ${data.inserted} yeni sürücü\nGüncellendi: ${data.updated} sürücü/araç\nTelefonsuz/Atlanan: ${data.noPhone}`);
+            closeSyncModal();
+        } else {
+            alert('Senkronizasyon hatası: ' + (data.message || 'Bilinmeyen hata'));
+        }
+    } catch (err) {
+        console.error('[Admin] Senkronizasyon hatası:', err);
+        alert('Senkronizasyon başlatılamadı: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = originalText;
     }
 }
 
