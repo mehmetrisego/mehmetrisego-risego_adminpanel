@@ -51,6 +51,7 @@ async function loadUptBalance() {
         const data = await res.json();
         if (data.success && data.tryBalanceRaw != null) {
             _lastUptBalanceRaw = data.tryBalanceRaw;
+            void loadKillswitchStatus();
             textEl.textContent = `${data.tryBalanceRaw} TL`;
             // Modal açıksa özet güncel bakiyeyi güncelle
             const summaryEl = document.getElementById('uptSummaryBalance');
@@ -777,93 +778,121 @@ function changeLeaderboardPage(delta) {
 let allPaymentLogs = [];
 let filteredPaymentLogs = [];
 let currentPaymentPage = 1;
-const PAYMENT_ITEMS_PER_PAGE = 30;
+const PAYMENT_ITEMS_PER_PAGE = 50;
+let paymentCursors = [null];
+let paymentNextCursor = null;
+let paymentHasMore = false;
+let paymentRequest = null;
+let paymentRequestVersion = 0;
+let paymentSearchTimer = null;
+let paymentLoading = false;
 
-async function loadPaymentLogs() {
-    const tableBody = document.getElementById('paymentTableBody');
-    const emptyEl = document.getElementById('paymentEmpty');
-    const tableContainer = document.querySelector('#paymentLogsModal .table-container');
-    const paginationEl = document.getElementById('paymentPagination');
-    if (!tableBody) return;
-
-    tableBody.innerHTML = '<tr><td colspan="7" style="text-align:center; padding:20px;">Yükleniyor...</td></tr>';
-    if (paginationEl) paginationEl.style.display = 'none';
-
-    // Toplam bakiyeyi asenkron olarak çek
-    fetchTotalDriversBalance();
-
-    try {
-        const res = await fetch(`${API_BASE}/admin/payment-logs`, { headers: getAdminHeaders() });
-        if (handleAdminApiResponse(res)) return;
-        const data = await res.json();
-
-        if (data.success) {
-            allPaymentLogs = data.logs || [];
-
-            // Bekleyen işlem uyarısı
-            const pendingCount = allPaymentLogs.filter(l => l.status === 'pending_bank').length;
-            const pendingWarningEl = document.getElementById('paymentPendingWarning');
-            if (pendingWarningEl) {
-                if (pendingCount > 0) {
-                    pendingWarningEl.textContent = `⚠️ ${pendingCount} işlem banka onayı bekleniyor (pending_bank). Sistem otomatik kontrol ediyor.`;
-                    pendingWarningEl.style.display = 'block';
-                } else {
-                    pendingWarningEl.style.display = 'none';
-                }
-            }
-
-            applyPaymentFilter();
-            
-            // Arama kutusuna listener ekle (zaten yoksa)
-            const searchInput = document.getElementById('paymentSearchInput');
-            if (searchInput && !searchInput.hasAttribute('data-listener-added')) {
-                searchInput.addEventListener('input', applyPaymentFilter);
-                searchInput.setAttribute('data-listener-added', 'true');
-            }
-        } else {
-            allPaymentLogs = [];
-            applyPaymentFilter();
-        }
-    } catch (err) {
-        console.error('[Admin] Ödeme kayıtları yüklenemedi:', err);
-        tableBody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:var(--error); padding:20px;">Veriler yüklenirken hata oluştu:<br/><small>${err.message}</small></td></tr>`;
-    }
+function cancelPaymentRequest() {
+    paymentRequestVersion++;
+    if (paymentRequest) paymentRequest.abort();
+    paymentRequest = null;
+    clearTimeout(paymentSearchTimer);
+    paymentLoading = false;
 }
 
-async function fetchTotalDriversBalance() {
-    const balEl = document.getElementById('totalDriversBalance');
-    if (!balEl) return;
-    balEl.textContent = 'Hesaplanıyor...';
+function paymentQuery() {
+    const params = new URLSearchParams({ limit: String(PAYMENT_ITEMS_PER_PAGE) });
+    const fields = { q: 'paymentSearchInput', from: 'paymentFrom', to: 'paymentTo', parkPartnerId: 'paymentPark', status: 'paymentStatus' };
+    for (const [key, id] of Object.entries(fields)) {
+        const value = document.getElementById(id).value.trim();
+        if (value) params.set(key, value);
+    }
+    return params;
+}
+
+async function loadPaymentLogs(page = 1) {
+    cancelPaymentRequest();
+    const version = paymentRequestVersion;
+    const params = paymentQuery();
+    const search = params.get('q') || '';
+    const hint = document.getElementById('paymentSearchHint');
+    if (search && search.length < 3 && !/^\d+$/.test(search)) {
+        hint.textContent = 'Arama için en az 3 karakter yazınız.';
+        return;
+    }
+    if (params.get('from') && params.get('to') && params.get('from') > params.get('to')) {
+        hint.textContent = 'Başlangıç tarihi bitiş tarihinden sonra olamaz.';
+        return;
+    }
+    if (paymentCursors[page - 1]) params.set('cursor', paymentCursors[page - 1]);
+    const request = new AbortController();
+    paymentRequest = request;
+    paymentLoading = true;
+    document.getElementById('paymentPrevBtn').disabled = true;
+    document.getElementById('paymentNextBtn').disabled = true;
+    hint.textContent = 'Ödeme kayıtları aranıyor...';
     try {
-        const res = await fetch(`${API_BASE}/admin/drivers/total-balance`, { headers: getAdminHeaders() });
+        const res = await fetch(API_BASE + '/admin/payment-logs?' + params.toString(), {
+            headers: getAdminHeaders(), signal: request.signal
+        });
+        if (version !== paymentRequestVersion) return;
+        if (handleAdminApiResponse(res)) return;
         const data = await res.json();
-        if (data.success) {
-            const formatted = new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(data.totalBalance || 0);
-            balEl.textContent = formatted + ' ₺';
-        } else {
-            balEl.textContent = 'Hata';
-        }
+        if (version !== paymentRequestVersion) return;
+        if (!res.ok || !data.success) throw new Error(data.message || 'Ödeme kayıtları alınamadı.');
+        if (typeof data.hasMore !== 'boolean') throw new Error('Ödeme geçmişi şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyiniz.');
+        allPaymentLogs = data.logs || [];
+        filteredPaymentLogs = allPaymentLogs;
+        currentPaymentPage = page;
+        paymentHasMore = data.hasMore;
+        paymentNextCursor = data.nextCursor;
+        const pendingCount = allPaymentLogs.filter(l => l.status === 'pending_bank').length;
+        const warning = document.getElementById('paymentPendingWarning');
+        warning.textContent = 'Bu sayfada ' + pendingCount + ' işlem banka onayı bekliyor.';
+        warning.style.display = pendingCount ? 'block' : 'none';
+        hint.textContent = 'Tarih seçilmezse tüm geçmiş aranır. İsim için en az 3 karakter yazın.';
+        renderPaymentPage();
     } catch (err) {
-        balEl.textContent = 'Hata';
+        if (version !== paymentRequestVersion || err.name === 'AbortError') return;
+        hint.textContent = err.message || 'Ödeme kayıtları yüklenemedi.';
+        // A failed request must not leave results from a different filter visible.
+        allPaymentLogs = [];
+        filteredPaymentLogs = [];
+        paymentHasMore = false;
+        document.getElementById('paymentTableBody').innerHTML = '';
+        document.querySelector('#paymentLogsModal .table-container').style.display = 'none';
+        document.getElementById('paymentPagination').style.display = 'none';
+        document.getElementById('paymentEmpty').style.display = 'none';
+    } finally {
+        if (version === paymentRequestVersion) {
+            paymentLoading = false;
+            paymentRequest = null;
+            document.getElementById('paymentPrevBtn').disabled = currentPaymentPage <= 1;
+            document.getElementById('paymentNextBtn').disabled = !paymentHasMore;
+        }
     }
 }
 
 function applyPaymentFilter() {
-    const searchVal = (document.getElementById('paymentSearchInput')?.value || '').toLowerCase().trim();
-    
-    if (!searchVal) {
-        filteredPaymentLogs = [...allPaymentLogs];
-    } else {
-        filteredPaymentLogs = allPaymentLogs.filter(log => {
-            const name = (log.beneficiary_name || '').toLowerCase();
-            const id = (log.driver_id || '').toLowerCase();
-            const ref = (log.tu_ref_number || '').toLowerCase();
-            return name.includes(searchVal) || id.includes(searchVal) || ref.includes(searchVal);
-        });
-    }
-    
+    cancelPaymentRequest();
+    paymentCursors = [null];
+    paymentNextCursor = null;
+    paymentHasMore = false;
     currentPaymentPage = 1;
-    renderPaymentPage();
+    allPaymentLogs = [];
+    filteredPaymentLogs = [];
+    document.getElementById('paymentTableBody').innerHTML = '';
+    document.querySelector('#paymentLogsModal .table-container').style.display = 'none';
+    document.getElementById('paymentPagination').style.display = 'none';
+    document.getElementById('paymentEmpty').style.display = 'none';
+    document.getElementById('paymentSearchHint').textContent = 'Arama hazırlanıyor...';
+    paymentSearchTimer = setTimeout(() => loadPaymentLogs(1), 400);
+}
+
+function resetPaymentFilters() {
+    for (const id of ['paymentSearchInput', 'paymentFrom', 'paymentTo', 'paymentPark', 'paymentStatus']) {
+        document.getElementById(id).value = '';
+    }
+    applyPaymentFilter();
+}
+
+function formatPaymentMoney(value) {
+    return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(value) || 0);
 }
 
 function renderPaymentPage() {
@@ -877,7 +906,8 @@ function renderPaymentPage() {
     if (filteredPaymentLogs.length === 0) {
         emptyEl.style.display = 'block';
         if (tableContainer) tableContainer.style.display = 'none';
-        if (paginationEl) paginationEl.style.display = 'none';
+        if (paginationEl) paginationEl.style.display = currentPaymentPage > 1 ? 'flex' : 'none';
+        document.getElementById('paymentPageInfo').textContent = 'Bu sayfada eşleşen kayıt kalmadı.';
         return;
     }
     
@@ -885,14 +915,10 @@ function renderPaymentPage() {
     if (tableContainer) tableContainer.style.display = 'block';
     if (paginationEl) paginationEl.style.display = 'flex';
     
-    const totalPages = Math.ceil(filteredPaymentLogs.length / PAYMENT_ITEMS_PER_PAGE) || 1;
-    if (currentPaymentPage > totalPages) currentPaymentPage = totalPages;
-    if (currentPaymentPage < 1) currentPaymentPage = 1;
-    
     const startIndex = (currentPaymentPage - 1) * PAYMENT_ITEMS_PER_PAGE;
-    const endIndex = Math.min(startIndex + PAYMENT_ITEMS_PER_PAGE, filteredPaymentLogs.length);
-    const pageLogs = filteredPaymentLogs.slice(startIndex, endIndex);
-    
+    const endIndex = startIndex + filteredPaymentLogs.length;
+    const pageLogs = filteredPaymentLogs;
+
     pageLogs.forEach(log => {
         const tr = document.createElement('tr');
         let statusClass = 'pending';
@@ -900,14 +926,16 @@ function renderPaymentPage() {
         let isClickable = false;
         
         if (log.status === 'success')       { statusClass = 'success';       statusText = 'Başarılı'; }
-        else if (log.status === 'pending_bank') { statusClass = 'pending';   statusText = '⏳ Banka Onayı'; isClickable = true; }
-        else if (log.status === 'bank_returned') { statusClass = 'refunded'; statusText = '❌ İade Edildi'; isClickable = true; }
+        else if (log.status === 'pending_bank') { statusClass = 'pending';   statusText = 'Banka Onayı'; isClickable = true; }
+        else if (log.status === 'bank_returned') { statusClass = 'refunded'; statusText = 'İade Edildi'; isClickable = true; }
         else if (log.status === 'error')    { statusClass = 'error';         statusText = 'Hatalı'; isClickable = true; }
         else if (log.status === 'refunded') { statusClass = 'refunded';      statusText = 'İade Edildi'; }
 
-        const amountFormatted = parseFloat(log.amount || 0).toFixed(2).replace('.', ',') + ' ₺';
-        const grossFormatted = parseFloat(log.gross_amount || 0).toFixed(2).replace('.', ',') + ' ₺';
-        const dateFormatted = formatDate(new Date(log.created_at));
+        const amountFormatted = formatPaymentMoney(log.amount);
+        const grossFormatted = formatPaymentMoney(log.gross_amount);
+        const paymentDate = new Date(log.created_at);
+        const dateFormatted = paymentDate.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: 'short', year: 'numeric' });
+        const timeFormatted = paymentDate.toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
         
         // Türkçe banka durumu açıklaması
         const bankStatusLabel = getBankStatusLabel(log.bank_status_code);
@@ -927,55 +955,65 @@ function renderPaymentPage() {
             : '';
 
         tr.innerHTML = `
-            <td style="position: relative; padding-right: 32px;">
-                <div style="font-weight: 600; color: var(--text);">${escapeHtml(log.beneficiary_name || 'Bilinmiyor')}</div>
-                <div style="font-size: 10px; color: var(--text-muted);">ID: ${log.driver_id}</div>
-                <button onclick="openAdminBankAccountsModal('${log.driver_id}', '${escapeHtml(log.beneficiary_name || 'Sürücü')}')" style="position: absolute; right: 8px; top: 50%; transform: translateY(-50%); background:none; border:none; color:var(--gold); cursor:pointer; padding:4px; display:flex;" title="Banka Bilgilerini Düzenle">
+            <td class="payment-driver-cell">
+                <div class="payment-driver-name">${escapeHtml(log.beneficiary_name || 'Bilinmiyor')}</div>
+                <div class="payment-record-id">İşlem #${log.id}</div><div class="payment-driver-id" title="${escapeHtml(log.driver_id || '-')}">ID: ${escapeHtml(log.driver_id || '-')}</div>
+                <button onclick="openAdminBankAccountsModal('${log.driver_id}', decodeURIComponent('${encodeURIComponent(log.beneficiary_name || 'Sürücü').replace(/'/g, '%27')}'))" class="payment-edit-account" title="Banka Bilgilerini Düzenle" aria-label="Banka Bilgilerini Düzenle">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>
                 </button>
             </td>
-            <td style="font-family: monospace; font-size: 11px;">${escapeHtml(log.beneficiary_iban || '-')}</td>
-            <td style="font-family: monospace; font-size: 11px; color: var(--text-muted);">${escapeHtml(log.tu_ref_number || '-')}</td>
-            <td style="font-weight: 700; color: var(--success);">${amountFormatted}</td>
-            <td style="color: var(--text-muted); font-size: 11px;">${grossFormatted}</td>
-            <td>
+            <td class="payment-iban">${escapeHtml(formatIban(log.beneficiary_iban || '-'))}</td>
+            <td class="payment-reference">${escapeHtml(log.tu_ref_number || '-')}</td>
+            <td class="payment-money payment-money-net">${amountFormatted}</td>
+            <td class="payment-money payment-money-gross">${grossFormatted}</td>
+            <td class="payment-status">
                 <span class="status-pill ${statusClass}" ${errorDetail} title="Detay için tıklayın">
                     ${statusText}
                 </span>
             </td>
-            <td style="color: var(--text-secondary); font-size: 11px;">${dateFormatted}</td>
+            <td class="payment-date"><span>${dateFormatted}</span><span class="payment-time">${timeFormatted}</span></td>
         `;
         tableBody.appendChild(tr);
     });
     
     const pageInfo = document.getElementById('paymentPageInfo');
     if (pageInfo) {
-        pageInfo.textContent = `Toplam ${filteredPaymentLogs.length} işlemden ${startIndex + 1}-${endIndex} arası gösteriliyor (Sayfa ${currentPaymentPage} / ${totalPages})`;
+        pageInfo.textContent = `${startIndex + 1}–${endIndex} arası gösteriliyor · Sayfa ${currentPaymentPage}${paymentHasMore ? " · Daha fazla sonuç var" : " · Son sayfa"}`;
     }
     
     const prevBtn = document.getElementById('paymentPrevBtn');
     const nextBtn = document.getElementById('paymentNextBtn');
     if (prevBtn) prevBtn.disabled = currentPaymentPage <= 1;
-    if (nextBtn) nextBtn.disabled = currentPaymentPage >= totalPages;
+    if (nextBtn) nextBtn.disabled = !paymentHasMore;
 }
 
 function changePaymentPage(delta) {
-    const totalPages = Math.ceil(filteredPaymentLogs.length / PAYMENT_ITEMS_PER_PAGE) || 1;
-    currentPaymentPage += delta;
-    if (currentPaymentPage < 1) currentPaymentPage = 1;
-    if (currentPaymentPage > totalPages) currentPaymentPage = totalPages;
-    renderPaymentPage();
+    if (paymentLoading) return;
+    const page = currentPaymentPage + delta;
+    if (page < 1 || (delta > 0 && !paymentHasMore)) return;
+    if (delta > 0) paymentCursors[page - 1] = paymentNextCursor;
+    loadPaymentLogs(page);
 }
 
 function openPaymentModal() {
     const modal = document.getElementById('paymentLogsModal');
-    if (modal) {
-        modal.style.display = 'flex';
-        loadPaymentLogs();
+    if (!modal) return;
+    const parkSelect = document.getElementById('paymentPark');
+    const previousPark = parkSelect.value;
+    parkSelect.innerHTML = '<option value="">Tüm şehirler</option>';
+    for (const park of adminAvailableParks) {
+        const option = document.createElement('option');
+        option.value = park.partnerId;
+        option.textContent = park.label;
+        parkSelect.appendChild(option);
     }
+    parkSelect.value = previousPark;
+    modal.style.display = 'flex';
+    applyPaymentFilter();
 }
 
 function closePaymentModal() {
+    cancelPaymentRequest();
     const modal = document.getElementById('paymentLogsModal');
     if (modal) modal.style.display = 'none';
 }
@@ -1028,18 +1066,27 @@ function closeErrorModal() {
 // ============================================
 
 let currentSuspendedCities = [];
+let currentKillswitchRevision = null;
+let killswitchEditRevision = null;
 
 async function loadKillswitchStatus() {
     try {
         const res = await fetch(`${API_BASE}/admin/killswitch`, { headers: getAdminHeaders() });
-        if (res.status === 401 || res.status === 403) return;
+        if (handleAdminApiResponse(res)) return false;
         const data = await res.json();
         if (data.success) {
             updateKillswitchUI(data.suspendedCities);
+            currentKillswitchRevision = data.revision;
+            const note = document.getElementById('uptSafetyNotice');
+            if (note) note.textContent = data.lastAutomaticStop
+                ? `UPT bakiyesi ${Number(data.lastAutomaticStop.balance).toLocaleString('tr-TR')} TL olduğu için ${formatDate(new Date(data.lastAutomaticStop.at))} tarihinde tüm şehirlerde çekimler durduruldu. Şehirleri açmak için seçimlerini kaldırıp kaydedin.`
+                : 'UPT bakiyesi 5.000 TL altına düşerse tüm şehirlerde çekimler otomatik durdurulur. Bakiye yükselse bile şehirleri yönetici açar.';
+            return true;
         }
     } catch (e) {
         console.error('[Admin] Killswitch durumu okunamadı:', e.message);
     }
+    return false;
 }
 
 function openKillswitchModal() {
@@ -1071,6 +1118,8 @@ function closeKillswitchModal() {
 }
 
 async function toggleKillswitch() {
+    if (!await loadKillswitchStatus()) { showToast('error', 'Güncel sistem durumu alınamadı.'); return; }
+    killswitchEditRevision = currentKillswitchRevision;
     openKillswitchModal();
 }
 
@@ -1082,7 +1131,7 @@ async function saveKillswitch() {
         const res = await fetch(`${API_BASE}/admin/killswitch`, {
             method: 'POST',
             headers: getAdminHeaders(),
-            body: JSON.stringify({ suspendedCities: newSuspended })
+            body: JSON.stringify({ suspendedCities: newSuspended, revision: killswitchEditRevision })
         });
         
         if (handleAdminApiResponse(res)) return;

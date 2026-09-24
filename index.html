@@ -11,7 +11,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="css/admin.css?v=4">
+    <link rel="stylesheet" href="css/admin.css?v=6">
 </head>
 <body>
     <!-- Ambient Background -->
@@ -271,47 +271,49 @@
 
         <!-- Çekim Geçmişi Modal (Pop-up) -->
         <div class="modal" id="paymentLogsModal" style="display:none">
-            <div class="modal-content" style="max-width: 1100px; width: 95%;">
-                <div class="modal-header">
-                    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%;">
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <div class="card-icon payment-icon" style="width: 32px; height: 32px;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                    <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                            </div>
-                            <h3 class="modal-title">Çekim Talepleri Geçmişi</h3>
-                        </div>
-                        
-                        <div class="header-tools">
-                            <div class="total-balance-badge">
-                                Toplam Sürücü Bakiyesi: <span id="totalDriversBalance">Yükleniyor...</span>
-                            </div>
-                            <div class="search-wrapper">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="search-icon">
-                                    <circle cx="11" cy="11" r="8"></circle>
-                                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-                                </svg>
-                                <input type="text" id="paymentSearchInput" placeholder="İsim, ID veya Ref No ara..." class="modern-search-input">
-                            </div>
-                        </div>
+            <div class="modal-content payment-dialog" role="dialog" aria-modal="true" aria-labelledby="paymentHistoryTitle">
+                <div class="modal-header payment-header">
+                    <div class="payment-heading">
+                        <div class="card-icon payment-icon" aria-hidden="true">₺</div>
+                        <div><h3 class="modal-title" id="paymentHistoryTitle">Çekim Talep Geçmişi</h3><p class="payment-subtitle">Geçmiş işlemleri arayın ve ödeme durumlarını takip edin.</p></div>
                     </div>
-                    <button class="btn-close-modal" onclick="closePaymentModal()" style="position: absolute; right: 20px; top: 20px;">&times;</button>
+                    <button class="btn-close-modal" onclick="closePaymentModal()" aria-label="Çekim geçmişini kapat">&times;</button>
                 </div>
-                <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
+                <div class="modal-body payment-content">
                     <div class="payment-body">
+                        <div class="search-wrapper payment-search">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="search-icon" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"/></svg>
+                            <input type="search" id="paymentSearchInput" placeholder="İsim, işlem no, sürücü ID, IBAN veya referans ara…" aria-label="Ödeme geçmişinde ara" maxlength="160" class="modern-search-input" oninput="applyPaymentFilter()">
+                        </div>
+                        <div class="payment-filters">
+                            <label>Başlangıç<input type="date" id="paymentFrom" class="filter-input" onchange="applyPaymentFilter()"></label>
+                            <label>Bitiş<input type="date" id="paymentTo" class="filter-input" onchange="applyPaymentFilter()"></label>
+                            <label>Şehir<select id="paymentPark" class="filter-input" onchange="applyPaymentFilter()"><option value="">Tüm şehirler</option></select></label>
+                            <label>Durum<select id="paymentStatus" class="filter-input" onchange="applyPaymentFilter()">
+                                <option value="">Tüm durumlar</option>
+                                <option value="success">Başarılı</option>
+                                <option value="pending_bank">Banka onayı bekliyor</option>
+                                <option value="bank_returned">Banka iadesi</option>
+                                <option value="refunded">İade edildi</option>
+                                <option value="error">Hatalı</option>
+                                <option value="pending">Bekliyor</option>
+                            </select></label>
+                            <button type="button" class="btn-reload" onclick="resetPaymentFilters()">Filtreleri temizle</button>
+                        </div>
+                        <p id="paymentSearchHint" class="payment-search-hint" role="status" aria-live="polite">Tarih seçilmezse tüm geçmiş aranır. İsim için en az 3 karakter yazın.</p>
                         <div class="table-container">
                             <!-- Bekleyen işlem uyarısı -->
-                            <div id="paymentPendingWarning" style="display:none; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #f59e0b; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; font-weight: 500;"></div>
+                            <div id="paymentPendingWarning" class="payment-pending-warning" style="display:none"></div>
                             <table class="admin-table" id="paymentTable">
+                                <colgroup><col class="col-driver"><col class="col-iban"><col class="col-reference"><col class="col-money"><col class="col-money"><col class="col-status"><col class="col-date"></colgroup>
                                 <thead>
                                     <tr>
                                         <th>Sürücü</th>
                                         <th>IBAN</th>
                                         <th>Referans No</th>
-                                        <th>Net Tutar</th>
-                                        <th>Brüt (Yandex)</th>
-                                        <th>Durum</th>
+                                        <th class="payment-money">Net tutar</th>
+                                        <th class="payment-money">Brüt tutar</th>
+                                        <th class="payment-status">Durum</th>
                                         <th>Tarih</th>
                                     </tr>
                                 </thead>
@@ -321,8 +323,8 @@
                             </table>
                         </div>
                         <!-- Sayfalama (Pagination) Kontrolleri -->
-                        <div id="paymentPagination" style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px; padding: 15px 5px; border-top: 1px solid var(--border-color);">
-                            <div style="font-size: 13px; color: var(--text-secondary); font-weight: 500;" id="paymentPageInfo"></div>
+                        <div id="paymentPagination" class="payment-pagination">
+                            <div id="paymentPageInfo"></div>
                             <div style="display: flex; gap: 12px;">
                                 <button id="paymentPrevBtn" class="pagination-btn" onclick="changePaymentPage(-1)">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
@@ -335,7 +337,7 @@
                             </div>
                         </div>
                         <div id="paymentEmpty" style="display:none; text-align:center; padding:40px; color:var(--text-muted); font-size:14px;">
-                            Henüz bir çekim talebi bulunmuyor.
+                            Seçtiğiniz filtrelere uygun çekim kaydı bulunamadı.
                         </div>
                     </div>
                 </div>
@@ -372,6 +374,7 @@
                 </div>
                 <div class="modal-body">
                     <p style="margin-bottom: 15px; color: var(--text-secondary); font-size: 14px;">Para çekme işlemlerini askıya almak istediğiniz şehirleri seçin. Seçilen şehirlerdeki sürücüler geçici bir süre para çekemeyecektir.</p>
+                    <p id="uptSafetyNotice" style="margin-bottom:16px; color:var(--warning); font-size:13px; line-height:1.6;"></p>
                     <div id="killswitchCitiesContainer" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
                     
                     <div style="margin-top: 20px; display: flex; gap: 10px;">
@@ -452,6 +455,6 @@
 
     <!-- admin-utils.js: API config, token, IBAN formatlama, tarih, XSS, toast, banka durum etiketleri -->
     <script src="js/admin-utils.js"></script>
-    <script src="js/admin.js?v=5"></script>
+    <script src="js/admin.js?v=8"></script>
 </body>
 </html>

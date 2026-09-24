@@ -1605,44 +1605,6 @@ select.filter-input {
     filter: grayscale(1);
 }
 
-/* Payment Table Enhancements */
-#paymentTable th:last-child, 
-#paymentTable td:last-child {
-    white-space: nowrap;
-    min-width: 160px;
-    text-align: right;
-}
-
-/* Modern Search and Header Tools */
-.header-tools {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    margin-left: auto;
-    margin-right: 48px;
-    flex-wrap: wrap;
-}
-
-.total-balance-badge {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    background: var(--surface);
-    padding: 10px 16px;
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    box-shadow: var(--shadow-sm);
-}
-
-.total-balance-badge span {
-    color: var(--success);
-    font-weight: 700;
-    text-shadow: 0 0 12px var(--success-glow);
-}
-
 .search-wrapper {
     position: relative;
     display: flex;
@@ -1685,4 +1647,70 @@ select.filter-input {
 
 .modern-search-input::placeholder {
     color: var(--text-muted);
+}
+
+/* Payment history: one alignment grid for filters, headings and records. */
+#paymentLogsModal { padding: 24px; }
+#paymentLogsModal .payment-dialog { max-width: 1440px; width: 100%; max-height: calc(100dvh - 48px); display: flex; flex-direction: column; overflow: hidden; }
+#paymentLogsModal .payment-header { padding: 24px 28px; gap: 20px; flex-shrink: 0; }
+.payment-heading { display: flex; align-items: center; gap: 14px; min-width: 0; }
+.payment-heading .payment-icon { width: 44px; height: 44px; flex-shrink: 0; border-radius: 13px; font-size: 24px; }
+.payment-heading .modal-title { font-size: 21px; line-height: 1.4; }
+.payment-subtitle { margin-top: 5px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+#paymentLogsModal .btn-close-modal { width: 36px; height: 36px; flex-shrink: 0; border-radius: 10px; background: var(--surface); }
+#paymentLogsModal .payment-content { padding: 24px 28px; min-height: 0; overflow-y: auto; scrollbar-gutter: stable; }
+.payment-search { margin-bottom: 20px; }
+#paymentSearchInput, #paymentSearchInput:focus { width: 100%; height: 48px; padding-left: 44px; box-sizing: border-box; }
+.payment-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; align-items: end; gap: 16px; }
+.payment-filters label { display: flex; flex-direction: column; gap: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 500; }
+.payment-filters .filter-input { width: 100%; height: 44px; min-width: 0; box-sizing: border-box; padding: 0 12px; font-size: 13px; border-radius: 10px; }
+.payment-filters .btn-reload { height: 44px; padding: 0 18px; margin: 0; white-space: nowrap; border-radius: 10px; }
+.payment-search-hint { margin: 12px 0 20px; font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+.payment-pending-warning { padding: 12px 16px; color: var(--warning); background: rgba(245,158,11,.07); border-bottom: 1px solid rgba(245,158,11,.18); font-size: 12px; line-height: 1.5; }
+#paymentTable { table-layout: fixed; min-width: 1100px; }
+#paymentTable .col-driver { width: 20%; }
+#paymentTable .col-iban { width: 22%; }
+#paymentTable .col-reference { width: 11%; }
+#paymentTable .col-money { width: 11%; }
+#paymentTable .col-status { width: 13%; }
+#paymentTable .col-date { width: 12%; }
+#paymentTable th { height: 48px; padding: 12px 16px; font-size: 10px; line-height: 1.5; white-space: nowrap; }
+#paymentTable td { height: 88px; padding: 16px; line-height: 1.5; }
+#paymentTable .payment-driver-cell { position: relative; padding-right: 48px; }
+.payment-driver-name { font-size: 13px; font-weight: 600; color: var(--text); overflow-wrap: anywhere; }
+.payment-record-id { margin-top: 4px; font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.payment-driver-id { font-family: monospace; font-size: 10px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.payment-edit-account { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); width: 28px; height: 28px; display: grid; place-items: center; background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.16); border-radius: 8px; color: var(--gold); cursor: pointer; }
+.payment-edit-account:hover { background: rgba(245,158,11,.15); }
+#paymentTable .payment-iban { font-family: monospace; font-size: 11px; white-space: nowrap; letter-spacing: -.25px; }
+#paymentTable .payment-reference { font-family: monospace; font-size: 11px; color: var(--text-secondary); overflow-wrap: anywhere; }
+#paymentTable .payment-money { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+#paymentTable td.payment-money-net { font-size: 14px; font-weight: 650; color: var(--success); }
+#paymentTable td.payment-money-gross { font-size: 12px; color: var(--text-secondary); }
+#paymentTable .payment-status { text-align: center; }
+#paymentTable .status-pill { justify-content: center; min-width: 104px; padding: 5px 10px; font-size: 11px; }
+#paymentTable .status-pill.pending { color: var(--warning); background: rgba(245,158,11,.1); }
+#paymentTable th:last-child, #paymentTable .payment-date { text-align: right; white-space: nowrap; }
+#paymentTable .payment-date { font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.payment-date span { display: block; }
+.payment-date .payment-time { margin-top: 4px; font-size: 12px; color: var(--text); }
+.payment-pagination { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 20px; }
+#paymentPageInfo { font-size: 12px; color: var(--text-secondary); line-height: 1.5; }
+#paymentLogsModal .modal-footer { padding: 16px 28px; flex-shrink: 0; }
+@media (max-width: 900px) {
+    .payment-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .payment-filters .btn-reload { grid-column: 1 / -1; justify-self: end; }
+}
+@media (max-width: 600px) {
+    #paymentLogsModal { padding: 10px; }
+    #paymentLogsModal .payment-dialog { max-height: calc(100dvh - 20px); border-radius: 16px; }
+    #paymentLogsModal .payment-header, #paymentLogsModal .payment-content { padding: 18px 16px; }
+    #paymentLogsModal .modal-footer { padding: 12px 16px; }
+    .payment-heading { gap: 10px; }
+    .payment-heading .payment-icon { display: none; }
+    .payment-heading .modal-title { font-size: 17px; }
+    .payment-subtitle { font-size: 12px; }
+    .payment-filters { gap: 12px; }
+    .payment-pagination { flex-direction: column; align-items: stretch; }
+    .payment-pagination > div:last-child { justify-content: space-between; }
 }
