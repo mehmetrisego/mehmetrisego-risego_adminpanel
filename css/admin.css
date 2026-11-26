@@ -1705,6 +1705,7 @@ select.filter-input {
 @keyframes payment-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 #paymentTable .status-pill[class*="tone-"] { cursor: pointer; white-space: normal; line-height: 1.25; text-align: center; max-width: 100%; }
 #paymentTable .status-pill[class*="tone-"]:hover { filter: brightness(1.2); }
+.payment-ref-ours { margin-top: 4px; font-size: 10px; color: var(--text-muted); overflow-wrap: anywhere; }
 .status-sub { margin-top: 6px; font-size: 10px; line-height: 1.35; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 
 /* Açık işlem özeti */

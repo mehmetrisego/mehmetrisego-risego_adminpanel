@@ -996,6 +996,8 @@ function renderPaymentPage() {
             log.status === 'admin_resolved' ? log.admin_decision_result : null
         ].filter(Boolean).join(' · ');
         const statusSubHtml = statusSub ? `<div class="status-sub">${escapeHtml(statusSub)}</div>` : '';
+        // Bankadaki karşılığı: admin kararıyla yeni transfer açıldıysa onun referansı, yoksa çekim referansı.
+        const ourRef = log.upt_correspondent_ref || log.transaction_id || '';
         const statusClick = needsPaymentDecision(log) ? `openDecisionModal(${log.id})` : `showPaymentDetail(${log.id})`;
         const statusTitle = needsPaymentDecision(log) ? 'Karar vermek için tıklayın' : 'Detay için tıklayın';
 
@@ -1008,7 +1010,10 @@ function renderPaymentPage() {
                 </button>
             </td>
             <td class="payment-iban">${escapeHtml(formatIban(log.beneficiary_iban || '-'))}</td>
-            <td class="payment-reference">${escapeHtml(log.tu_ref_number || '-')}</td>
+            <td class="payment-reference">
+                <div title="Banka referansı (UPTREF)">${escapeHtml(log.tu_ref_number || '-')}</div>
+                ${ourRef ? `<div class="payment-ref-ours" title="Çekim referansımız (Uption'daki CORRESPONDENT_REF)">${escapeHtml(ourRef)}</div>` : ''}
+            </td>
             <td class="payment-money payment-money-net">${amountFormatted}</td>
             <td class="payment-money payment-money-gross">${grossFormatted}</td>
             <td class="payment-status">
@@ -1096,6 +1101,12 @@ function showPaymentDetail(logId) {
     if (log.yandex_refund_at) {
         detail += `\n\n🔄 Tutar sürücünün Yandex bakiyesine iade edildi.`;
     }
+    const refs = [
+        log.tu_ref_number ? `Banka referansı (UPTREF): ${log.tu_ref_number}` : '',
+        log.transaction_id ? `Çekim referansı: ${log.transaction_id}` : '',
+        log.upt_correspondent_ref && log.upt_correspondent_ref !== log.transaction_id ? `Bankadaki referans: ${log.upt_correspondent_ref}` : ''
+    ].filter(Boolean);
+    if (refs.length) detail += `\n\n${refs.join('\n')}`;
     if (log.admin_decision_result) {
         const by = [log.admin_decided_at ? formatDate(new Date(log.admin_decided_at)) : '', log.admin_decided_by || ''].filter(Boolean).join(' · ');
         detail += `\n\nAdmin kararı: ${log.admin_decision_result}${by ? `\n${by}` : ''}`;
@@ -1170,6 +1181,7 @@ function renderDecision() {
         <div class="decision-summary">
             ${row('Sürücü', r.beneficiary_name)}
             ${row('İşlem', `#${r.id} · ${formatDate(new Date(r.created_at))}`)}
+            ${row('Çekim referansı', r.transaction_id)}
             ${row('IBAN', formatIban(r.beneficiary_iban || '-'))}
             ${row('Net / brüt', `${money(r.amount)} / ${money(r.gross_amount)}`)}
             ${row('Bankada şu an', bankText)}
