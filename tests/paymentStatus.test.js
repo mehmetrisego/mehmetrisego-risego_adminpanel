@@ -29,7 +29,8 @@ test('each status maps to the planned group and label', () => {
         [{ status: 'success' }, 'success', 'Başarılı'],
         [{ status: 'bank_returned' }, 'closed', 'Banka iade etti'],
         [{ status: 'refunded' }, 'closed', 'İptal: bakiyeye iade'],
-        [{ status: 'yandex_failed' }, 'closed', 'Yandex reddetti']
+        [{ status: 'yandex_failed' }, 'closed', 'Yandex reddetti'],
+        [{ status: 'bank_tr000_error', created_at: minutesAgo(3000) }, 'flagged', 'TR000 hata kodu']
     ];
     for (const [log, group, label] of cases) {
         const result = info(log);

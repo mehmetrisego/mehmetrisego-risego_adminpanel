@@ -11,7 +11,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="css/admin.css?v=7">
+    <link rel="stylesheet" href="css/admin.css?v=8">
 </head>
 <body>
     <!-- Ambient Background -->
@@ -309,6 +309,7 @@
                                     <option value="bank_returned">Banka iade etti</option>
                                     <option value="refunded">İptal: bakiyeye iade</option>
                                     <option value="yandex_failed">Yandex reddetti</option>
+                                    <option value="bank_tr000_error">TR000 hata kodu</option>
                                 </optgroup>
                             </select></label>
                             <button type="button" class="btn-reload" onclick="resetPaymentFilters()">Filtreleri temizle</button>
@@ -467,7 +468,7 @@
     </div>
 
     <!-- admin-utils.js: API config, token, IBAN formatlama, tarih, XSS, toast, banka durum etiketleri -->
-    <script src="js/admin-utils.js?v=2"></script>
+    <script src="js/admin-utils.js?v=3"></script>
     <script src="js/admin.js?v=9"></script>
 </body>
 </html>

@@ -184,6 +184,7 @@ function getReturnReasonLabel(code)  { return RETURN_REASON_LABEL[String(code)] 
 //   action     (kırmızı) yönetici müdahalesi gerekiyor
 //   success    (yeşil)  tamamlandı
 //   closed     (gri)    sonuçlandı (iade/ret), para hareketi kapandı
+//   flagged    (beyaz)  takipten çıkarıldı, işaretli (TR000 hata kodu)
 // Eşikler backend'den gelir (payment-logs yanıtındaki `thresholds`); bu değerler yedektir.
 const PAYMENT_THRESHOLDS = { yandexDelayMinutes: 30, bankStuckMinutes: 120 };
 
@@ -214,7 +215,8 @@ const PAYMENT_STATUS_TEXT = {
     success: 'Para sürücünün hesabına aktarıldı.',
     bank_returned: 'Banka transferi iade etti; tutar sürücünün Yandex bakiyesine geri yüklendi.',
     refunded: 'Banka transferi yapılamadı; Yandex kesintisi geri alındı.',
-    yandex_failed: 'Yandex kesintiyi reddetti; para hareketi olmadı.'
+    yandex_failed: 'Yandex kesintiyi reddetti; para hareketi olmadı.',
+    bank_tr000_error: 'Banka transferi oluşturuldu ama onayı tamamlanmadı (TR000). Kayıt takipten çıkarıldı; sistem bu işlem için otomatik bir şey yapmıyor. Sürücünün Yandex bakiyesi düşülmüş durumda.'
 };
 
 /**
@@ -259,6 +261,8 @@ function getPaymentStatusInfo(log, now = Date.now()) {
             return { group: 'closed', label: 'İptal: bakiyeye iade', textKey: s, ageText: '' };
         case 'yandex_failed':
             return { group: 'closed', label: 'Yandex reddetti', textKey: s, ageText: '' };
+        case 'bank_tr000_error':
+            return { group: 'flagged', label: 'TR000 hata kodu', textKey: s, ageText: '' };
         default:
             return { group: 'closed', label: s ? `Bilinmeyen durum (${s})` : 'Bilinmiyor', textKey: '', ageText: '' };
     }
