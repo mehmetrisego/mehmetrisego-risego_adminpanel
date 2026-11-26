@@ -786,6 +786,52 @@ let paymentRequest = null;
 let paymentRequestVersion = 0;
 let paymentSearchTimer = null;
 let paymentLoading = false;
+// Liste açıkken dakikada bir sessizce yenilenir (banka/Yandex sonuçları ekranda kendiliğinden güncellensin).
+const PAYMENT_AUTO_REFRESH_MS = 60 * 1000;
+let paymentAutoRefreshTimer = null;
+let paymentFilterPending = false;
+let paymentLastUpdated = null;
+
+function formatClock(date) {
+    return date.toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function startPaymentAutoRefresh() {
+    stopPaymentAutoRefresh();
+    paymentAutoRefreshTimer = setInterval(() => {
+        const modal = document.getElementById('paymentLogsModal');
+        if (!modal || modal.style.display === 'none') return;
+        if (paymentLoading || paymentFilterPending) return;
+        if (document.hidden === true) return;
+        loadPaymentLogs(currentPaymentPage, { silent: true });
+    }, PAYMENT_AUTO_REFRESH_MS);
+}
+
+function stopPaymentAutoRefresh() {
+    if (paymentAutoRefreshTimer) clearInterval(paymentAutoRefreshTimer);
+    paymentAutoRefreshTimer = null;
+}
+
+function renderPaymentSummary(summary) {
+    const el = document.getElementById('paymentSummary');
+    if (!el) return;
+    if (!summary) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    const current = document.getElementById('paymentStatus').value;
+    const chip = (group, status, label, count, title) =>
+        `<button type="button" class="summary-chip tone-${group}${current === status ? ' active' : ''}" onclick="filterPaymentGroup('${status}')" title="${title}">` +
+        `<span class="summary-count">${Number(count) || 0}</span><span>${label}</span></button>`;
+    el.innerHTML =
+        chip('action', 'grp_action', 'Aksiyon gerekli', summary.action, 'Senin müdahalen gereken kayıtlar. Tıkla: yalnızca bunları göster.') +
+        chip('delayed', 'grp_delayed', 'Gecikmede', summary.delayed, 'Sistem takip ediyor ama beklenen süreyi aştı. Tıkla: yalnızca bunları göster.') +
+        chip('processing', 'grp_processing', 'İşlemde', summary.processing, 'Normal akışta ilerleyen kayıtlar. Tıkla: yalnızca bunları göster.');
+    el.style.display = 'flex';
+}
+
+function filterPaymentGroup(status) {
+    const select = document.getElementById('paymentStatus');
+    select.value = select.value === status ? '' : status;
+    applyPaymentFilter();
+}
 
 function cancelPaymentRequest() {
     paymentRequestVersion++;
@@ -805,8 +851,9 @@ function paymentQuery() {
     return params;
 }
 
-async function loadPaymentLogs(page = 1) {
+async function loadPaymentLogs(page = 1, { silent = false } = {}) {
     cancelPaymentRequest();
+    paymentFilterPending = false;
     const version = paymentRequestVersion;
     const params = paymentQuery();
     const search = params.get('q') || '';
@@ -823,9 +870,11 @@ async function loadPaymentLogs(page = 1) {
     const request = new AbortController();
     paymentRequest = request;
     paymentLoading = true;
-    document.getElementById('paymentPrevBtn').disabled = true;
-    document.getElementById('paymentNextBtn').disabled = true;
-    hint.textContent = 'Ödeme kayıtları aranıyor...';
+    if (!silent) {
+        document.getElementById('paymentPrevBtn').disabled = true;
+        document.getElementById('paymentNextBtn').disabled = true;
+        hint.textContent = 'Ödeme kayıtları aranıyor...';
+    }
     try {
         const res = await fetch(API_BASE + '/admin/payment-logs?' + params.toString(), {
             headers: getAdminHeaders(), signal: request.signal
@@ -841,14 +890,19 @@ async function loadPaymentLogs(page = 1) {
         currentPaymentPage = page;
         paymentHasMore = data.hasMore;
         paymentNextCursor = data.nextCursor;
-        const pendingCount = allPaymentLogs.filter(l => l.status === 'pending_bank').length;
-        const warning = document.getElementById('paymentPendingWarning');
-        warning.textContent = 'Bu sayfada ' + pendingCount + ' işlem banka onayı bekliyor.';
-        warning.style.display = pendingCount ? 'block' : 'none';
-        hint.textContent = 'Tarih seçilmezse tüm geçmiş aranır. İsim için en az 3 karakter yazın.';
+        setPaymentThresholds(data.thresholds);
+        renderPaymentSummary(data.summary);
+        paymentLastUpdated = new Date();
+        hint.textContent = 'Tarih seçilmezse tüm geçmiş aranır. İsim için en az 3 karakter yazın. · Liste dakikada bir kendiliğinden yenilenir (son güncelleme ' + formatClock(paymentLastUpdated) + ').';
         renderPaymentPage();
     } catch (err) {
         if (version !== paymentRequestVersion || err.name === 'AbortError') return;
+        if (silent) {
+            // Otomatik yenileme hatası ekrandaki listeyi silmez.
+            hint.textContent = 'Otomatik yenileme başarısız oldu; ' +
+                (paymentLastUpdated ? formatClock(paymentLastUpdated) + ' itibarıyla veriler gösteriliyor.' : 'bir dakika sonra tekrar denenecek.');
+            return;
+        }
         hint.textContent = err.message || 'Ödeme kayıtları yüklenemedi.';
         // A failed request must not leave results from a different filter visible.
         allPaymentLogs = [];
@@ -870,6 +924,7 @@ async function loadPaymentLogs(page = 1) {
 
 function applyPaymentFilter() {
     cancelPaymentRequest();
+    paymentFilterPending = true;
     paymentCursors = [null];
     paymentNextCursor = null;
     paymentHasMore = false;
@@ -921,15 +976,7 @@ function renderPaymentPage() {
 
     pageLogs.forEach(log => {
         const tr = document.createElement('tr');
-        let statusClass = 'pending';
-        let statusText = 'Bekliyor';
-        let isClickable = false;
-        
-        if (log.status === 'success')       { statusClass = 'success';       statusText = 'Başarılı'; }
-        else if (log.status === 'pending_bank') { statusClass = 'pending';   statusText = 'Banka Onayı'; isClickable = true; }
-        else if (log.status === 'bank_returned') { statusClass = 'refunded'; statusText = 'İade Edildi'; isClickable = true; }
-        else if (log.status === 'error')    { statusClass = 'error';         statusText = 'Hatalı'; isClickable = true; }
-        else if (log.status === 'refunded') { statusClass = 'refunded';      statusText = 'İade Edildi'; }
+        const statusInfo = getPaymentStatusInfo(log);
 
         const amountFormatted = formatPaymentMoney(log.amount);
         const grossFormatted = formatPaymentMoney(log.gross_amount);
@@ -937,22 +984,15 @@ function renderPaymentPage() {
         const dateFormatted = paymentDate.toLocaleDateString('tr-TR', { timeZone: 'Europe/Istanbul', day: '2-digit', month: 'short', year: 'numeric' });
         const timeFormatted = paymentDate.toLocaleTimeString('tr-TR', { timeZone: 'Europe/Istanbul', hour: '2-digit', minute: '2-digit' });
         
-        // Türkçe banka durumu açıklaması
+        // Etiketin altındaki kısa bilgi: aşamada geçen süre · banka durumu · iade nedeni
         const bankStatusLabel = getBankStatusLabel(log.bank_status_code);
-        const bankCodeHtml = bankStatusLabel
-            ? `<div style="font-size:9px; color:var(--text-muted); margin-top:2px;">${bankStatusLabel}</div>`
-            : '';
-        
-        // Türkçe iade nedeni açıklaması
         const returnReasonLabel = getReturnReasonLabel(log.return_reason_code);
-        const returnReasonHtml = returnReasonLabel
-            ? `<div style="font-size:9px; color:#f59e0b; margin-top:2px;">${returnReasonLabel}</div>`
-            : '';
-
-        // Hata/İade detayını tıklanabilir yap
-        const errorDetail = (log.error_message || returnReasonLabel)
-            ? `onclick="showPaymentDetail(${log.id})" style="cursor:pointer;"`
-            : '';
+        const statusSub = [
+            statusInfo.ageText,
+            log.status !== 'success' ? bankStatusLabel : null,
+            log.status === 'bank_returned' ? returnReasonLabel : null
+        ].filter(Boolean).join(' · ');
+        const statusSubHtml = statusSub ? `<div class="status-sub">${escapeHtml(statusSub)}</div>` : '';
 
         tr.innerHTML = `
             <td class="payment-driver-cell">
@@ -967,9 +1007,8 @@ function renderPaymentPage() {
             <td class="payment-money payment-money-net">${amountFormatted}</td>
             <td class="payment-money payment-money-gross">${grossFormatted}</td>
             <td class="payment-status">
-                <span class="status-pill ${statusClass}" ${errorDetail} title="Detay için tıklayın">
-                    ${statusText}
-                </span>
+                <span class="status-pill tone-${statusInfo.group}" onclick="showPaymentDetail(${log.id})" title="Detay için tıklayın">${escapeHtml(statusInfo.label)}</span>
+                ${statusSubHtml}
             </td>
             <td class="payment-date"><span>${dateFormatted}</span><span class="payment-time">${timeFormatted}</span></td>
         `;
@@ -1010,10 +1049,12 @@ function openPaymentModal() {
     parkSelect.value = previousPark;
     modal.style.display = 'flex';
     applyPaymentFilter();
+    startPaymentAutoRefresh();
 }
 
 function closePaymentModal() {
     cancelPaymentRequest();
+    stopPaymentAutoRefresh();
     const modal = document.getElementById('paymentLogsModal');
     if (modal) modal.style.display = 'none';
 }
@@ -1037,19 +1078,21 @@ function showPaymentDetail(logId) {
     const textEl = document.getElementById('errorDetailText');
     if (!modal || !textEl) return;
 
-    const statusLabel = getFriendlyStatusLabel(log);
     const returnReason = getReturnReasonLabel(log.return_reason_code);
     const bankStatus = getBankStatusLabel(log.bank_status_code);
 
-    let detail = statusLabel;
+    let detail = getFriendlyStatusLabel(log);
     if (returnReason && log.status === 'bank_returned') {
-        detail += `\n\nIade Nedeni: ${returnReason}`;
+        detail += `\n\nİade nedeni: ${returnReason}`;
     }
     if (bankStatus && log.bank_status_code && !returnReason) {
-        detail += `\n\nBanka Durumu: ${bankStatus}`;
+        detail += `\n\nBanka durumu: ${bankStatus} (${log.bank_status_code})`;
     }
     if (log.yandex_refund_at) {
-        detail += `\n\n🔄 Yandex bakiyeniz iade edildi.`;
+        detail += `\n\n🔄 Tutar sürücünün Yandex bakiyesine iade edildi.`;
+    }
+    if (log.error_message) {
+        detail += `\n\nTeknik not: ${log.error_message}`;
     }
     textEl.textContent = detail;
     modal.style.display = 'flex';

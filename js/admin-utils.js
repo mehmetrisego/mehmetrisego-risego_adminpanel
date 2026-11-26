@@ -177,19 +177,97 @@ const RETURN_REASON_LABEL = {
 function getBankStatusLabel(code)    { return BANK_STATUS_LABEL[code] || null; }
 function getReturnReasonLabel(code)  { return RETURN_REASON_LABEL[String(code)] || null; }
 
+// ─── Çekim durum modeli ────────────────────────────────────────────────────
+// Renk = ne yapılmalı, etiket = hangi aşama. Gruplar:
+//   processing (mavi)  normal akış, işlem yok
+//   delayed    (turuncu) sistem takip ediyor, dikkat
+//   action     (kırmızı) yönetici müdahalesi gerekiyor
+//   success    (yeşil)  tamamlandı
+//   closed     (gri)    sonuçlandı (iade/ret), para hareketi kapandı
+// Eşikler backend'den gelir (payment-logs yanıtındaki `thresholds`); bu değerler yedektir.
+const PAYMENT_THRESHOLDS = { yandexDelayMinutes: 30, bankStuckMinutes: 120 };
+
+function setPaymentThresholds(t) {
+    if (!t) return;
+    if (Number.isFinite(t.yandexDelayMinutes)) PAYMENT_THRESHOLDS.yandexDelayMinutes = t.yandexDelayMinutes;
+    if (Number.isFinite(t.bankStuckMinutes)) PAYMENT_THRESHOLDS.bankStuckMinutes = t.bankStuckMinutes;
+}
+
+function formatWaitDuration(minutes) {
+    const m = Math.max(0, Math.floor(minutes));
+    if (m < 60) return `${m} dk`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} sa ${m % 60} dk`;
+    return `${Math.floor(h / 24)} gün ${h % 24} sa`;
+}
+
+const PAYMENT_STATUS_TEXT = {
+    yandex_pending: 'Yandex sürücü bakiyesinden kesintiyi işliyor. Onaylanınca banka transferi otomatik başlar.',
+    yandex_delayed: 'Yandex kesintiyi 30 dakikadan uzun süredir onaylamadı. Sistem takip ediyor ve SMS alarmı gönderildi; onay gelince banka transferi otomatik başlar.',
+    bank_starting: 'Banka transferi başlatılıyor.',
+    pending_bank: 'Banka transferi gönderildi, banka sonucu bekleniyor.',
+    bank_stuck: 'Banka transferi uzun süredir sonuçlanmadı; bankada askıda olabilir. Sistem kontrol etmeye devam ediyor.',
+    bank_unknown: 'Bankaya gönderim sırasında Uption yanıt vermedi. Sistem sonucu bankadan otomatik teyit etmeye çalışıyor.',
+    bank_returned_refund_pending: 'Banka parayı iade etti ama tutar sürücünün Yandex bakiyesine geri yüklenemedi. Elle iade gerekli.',
+    error: 'Banka transferi yapılamadı ve Yandex iadesi de başarısız oldu. Elle kontrol gerekli.',
+    yandex_stuck_review: 'Kayıt manuel incelemeye alınmış; sistem bu kayıt için otomatik işlem yapmıyor.',
+    success: 'Para sürücünün hesabına aktarıldı.',
+    bank_returned: 'Banka transferi iade etti; tutar sürücünün Yandex bakiyesine geri yüklendi.',
+    refunded: 'Banka transferi yapılamadı; Yandex kesintisi geri alındı.',
+    yandex_failed: 'Yandex kesintiyi reddetti; para hareketi olmadı.'
+};
+
+/**
+ * Bir çekim kaydının panelde nasıl gösterileceğini döner.
+ * @returns {{group:string, label:string, textKey:string, ageText:string}}
+ */
+function getPaymentStatusInfo(log, now = Date.now()) {
+    const s = log && log.status;
+    const t = PAYMENT_THRESHOLDS;
+    const minutesSince = iso => {
+        const ms = Date.parse(iso);
+        return Number.isFinite(ms) ? (now - ms) / 60000 : null;
+    };
+    const created = minutesSince(log && log.created_at);
+    const bankAge = minutesSince((log && log.bank_started_at) || (log && log.created_at));
+    const withAge = (info, age) => ({ ...info, ageText: age == null ? '' : formatWaitDuration(age) });
+
+    switch (s) {
+        case 'yandex_pending':
+            return created != null && created >= t.yandexDelayMinutes
+                ? withAge({ group: 'delayed', label: 'Yandex gecikiyor', textKey: 'yandex_delayed' }, created)
+                : withAge({ group: 'processing', label: 'Yandex onayı bekleniyor', textKey: 'yandex_pending' }, created);
+        case 'bank_starting':
+            return withAge({ group: 'processing', label: 'Bankaya gönderiliyor', textKey: 'bank_starting' }, bankAge);
+        case 'pending_bank':
+            return bankAge != null && bankAge >= t.bankStuckMinutes
+                ? withAge({ group: 'delayed', label: 'Bankada askıda', textKey: 'bank_stuck' }, bankAge)
+                : withAge({ group: 'processing', label: 'Banka işliyor', textKey: 'pending_bank' }, bankAge);
+        case 'bank_unknown':
+            return withAge({ group: 'delayed', label: 'Banka sonucu belirsiz', textKey: 'bank_unknown' }, created);
+        case 'bank_returned_refund_pending':
+            return { group: 'action', label: 'İade başarısız: elle iade et', textKey: s, ageText: '' };
+        case 'error':
+            return { group: 'action', label: 'Hata: iade yapılamadı', textKey: s, ageText: '' };
+        case 'yandex_stuck_review':
+            return { group: 'action', label: 'Manuel inceleme', textKey: s, ageText: '' };
+        case 'success':
+            return { group: 'success', label: 'Başarılı', textKey: s, ageText: '' };
+        case 'bank_returned':
+            return { group: 'closed', label: 'Banka iade etti', textKey: s, ageText: '' };
+        case 'refunded':
+            return { group: 'closed', label: 'İptal: bakiyeye iade', textKey: s, ageText: '' };
+        case 'yandex_failed':
+            return { group: 'closed', label: 'Yandex reddetti', textKey: s, ageText: '' };
+        default:
+            return { group: 'closed', label: s ? `Bilinmeyen durum (${s})` : 'Bilinmiyor', textKey: '', ageText: '' };
+    }
+}
+
 function getFriendlyStatusLabel(record) {
     if (!record) return 'Bilinmiyor';
-    const s = record.status;
-    if (s === 'success')      return '✅ Başarılı — Para hesaba aktarıldı';
-    if (s === 'pending_bank') {
-        const lbl = getBankStatusLabel(record.bank_status_code);
-        return lbl ? `⏳ Banka işliyor — ${lbl}` : '⏳ Banka onayı bekleniyor';
-    }
-    if (s === 'bank_returned') {
-        const reason = getReturnReasonLabel(record.return_reason_code);
-        return reason ? `❌ İade edildi — ${reason}` : '❌ Banka tarafından iade edildi';
-    }
-    if (s === 'error')    return '❌ Sistem hatası — İşlem yapılamadı';
-    if (s === 'refunded') return '🔄 İade edildi';
-    return 'Bilinmiyor';
+    const info = getPaymentStatusInfo(record);
+    const text = PAYMENT_STATUS_TEXT[info.textKey] || '';
+    const age = info.ageText ? ` (${info.ageText})` : '';
+    return text ? `${info.label}${age}\n\n${text}` : `${info.label}${age}`;
 }

@@ -20,6 +20,8 @@ function setup() {
         API_BASE: 'https://example.test/api', getAdminHeaders: () => ({}),
         handleAdminApiResponse: () => false, escapeHtml: s => s, formatIban: s => s,
         getBankStatusLabel: () => null, getReturnReasonLabel: () => null, formatDate: () => 'date',
+        getPaymentStatusInfo: () => ({ group: 'success', label: 'Başarılı', ageText: '' }),
+        setPaymentThresholds: () => {}, getFriendlyStatusLabel: () => 'detay',
         setTimeout: fn => { const id = ++timerId; timers.set(id, fn); return id; },
         clearTimeout: id => timers.delete(id),
         fetch: (url, options) => new Promise(resolve => requests.push({ url, options, resolve }))

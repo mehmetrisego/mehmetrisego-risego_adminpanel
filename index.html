@@ -11,7 +11,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="css/admin.css?v=6">
+    <link rel="stylesheet" href="css/admin.css?v=7">
 </head>
 <body>
     <!-- Ambient Background -->
@@ -291,19 +291,32 @@
                             <label>Şehir<select id="paymentPark" class="filter-input" onchange="applyPaymentFilter()"><option value="">Tüm şehirler</option></select></label>
                             <label>Durum<select id="paymentStatus" class="filter-input" onchange="applyPaymentFilter()">
                                 <option value="">Tüm durumlar</option>
-                                <option value="success">Başarılı</option>
-                                <option value="pending_bank">Banka onayı bekliyor</option>
-                                <option value="bank_returned">Banka iadesi</option>
-                                <option value="refunded">İade edildi</option>
-                                <option value="error">Hatalı</option>
-                                <option value="pending">Bekliyor</option>
+                                <optgroup label="Gruplar">
+                                    <option value="grp_action">🔴 Aksiyon gerekli</option>
+                                    <option value="grp_delayed">🟠 Gecikmede</option>
+                                    <option value="grp_processing">🔵 İşlemde</option>
+                                </optgroup>
+                                <optgroup label="Aşamalar">
+                                    <option value="yandex_pending">Yandex onayı bekleniyor / gecikiyor</option>
+                                    <option value="pending_bank">Banka işliyor / bankada askıda</option>
+                                    <option value="bank_unknown">Banka sonucu belirsiz</option>
+                                    <option value="bank_returned_refund_pending">İade başarısız: elle iade et</option>
+                                    <option value="error">Hata: iade yapılamadı</option>
+                                    <option value="yandex_stuck_review">Manuel inceleme</option>
+                                </optgroup>
+                                <optgroup label="Sonuçlananlar">
+                                    <option value="success">Başarılı</option>
+                                    <option value="bank_returned">Banka iade etti</option>
+                                    <option value="refunded">İptal: bakiyeye iade</option>
+                                    <option value="yandex_failed">Yandex reddetti</option>
+                                </optgroup>
                             </select></label>
                             <button type="button" class="btn-reload" onclick="resetPaymentFilters()">Filtreleri temizle</button>
                         </div>
                         <p id="paymentSearchHint" class="payment-search-hint" role="status" aria-live="polite">Tarih seçilmezse tüm geçmiş aranır. İsim için en az 3 karakter yazın.</p>
+                        <!-- Açık işlem özeti: 🔴 aksiyon / 🟠 gecikme / 🔵 işlemde (tıklayınca filtreler) -->
+                        <div id="paymentSummary" class="payment-summary" style="display:none" aria-label="Açık işlem özeti"></div>
                         <div class="table-container">
-                            <!-- Bekleyen işlem uyarısı -->
-                            <div id="paymentPendingWarning" class="payment-pending-warning" style="display:none"></div>
                             <table class="admin-table" id="paymentTable">
                                 <colgroup><col class="col-driver"><col class="col-iban"><col class="col-reference"><col class="col-money"><col class="col-money"><col class="col-status"><col class="col-date"></colgroup>
                                 <thead>
@@ -357,7 +370,7 @@
                     <button class="btn-close-modal" onclick="closeErrorModal()">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p id="errorDetailText" style="color: var(--error); line-height: 1.6; font-size: 14px; white-space: pre-wrap;"></p>
+                    <p id="errorDetailText" style="color: var(--text); line-height: 1.6; font-size: 14px; white-space: pre-wrap;"></p>
                 </div>
                 <div class="modal-footer">
                     <button class="btn-modal-close" onclick="closeErrorModal()">Kapat</button>
@@ -454,7 +467,7 @@
     </div>
 
     <!-- admin-utils.js: API config, token, IBAN formatlama, tarih, XSS, toast, banka durum etiketleri -->
-    <script src="js/admin-utils.js"></script>
-    <script src="js/admin.js?v=8"></script>
+    <script src="js/admin-utils.js?v=2"></script>
+    <script src="js/admin.js?v=9"></script>
 </body>
 </html>
