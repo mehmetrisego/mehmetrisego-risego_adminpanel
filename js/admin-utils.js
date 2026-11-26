@@ -208,7 +208,10 @@ const PAYMENT_STATUS_TEXT = {
     bank_starting: 'Banka transferi başlatılıyor.',
     pending_bank: 'Banka transferi gönderildi, banka sonucu bekleniyor.',
     bank_stuck: 'Banka transferi uzun süredir sonuçlanmadı; bankada askıda olabilir. Sistem kontrol etmeye devam ediyor.',
-    bank_unknown: 'Bankaya gönderim sırasında Uption yanıt vermedi. Sistem sonucu bankadan otomatik teyit etmeye çalışıyor.',
+    bank_unknown: 'Bankaya gönderim sırasında Uption yanıt vermedi. Sistem sürücünün 10 dakikalık bekleme süresi içinde 3 kez bankayı kontrol edip gerekirse onayı yeniden gönderiyor. Gönderilemezse admin kararına düşer.',
+    admin_review: 'Banka transferi 3 otomatik denemede gönderilemedi. Sürücünün Yandex bakiyesi düşülmüş durumda; ne yapılacağına admin karar verir. Karar penceresi için etikete tıklayın.',
+    admin_processing: 'Admin kararı şu anda uygulanıyor.',
+    admin_resolved: 'Bu işlem admin kararıyla sonuçlandırıldı.',
     bank_returned_refund_pending: 'Banka parayı iade etti ama tutar sürücünün Yandex bakiyesine geri yüklenemedi. Elle iade gerekli.',
     error: 'Banka transferi yapılamadı ve Yandex iadesi de başarısız oldu. Elle kontrol gerekli.',
     yandex_stuck_review: 'Kayıt manuel incelemeye alınmış; sistem bu kayıt için otomatik işlem yapmıyor.',
@@ -246,7 +249,13 @@ function getPaymentStatusInfo(log, now = Date.now()) {
                 ? withAge({ group: 'delayed', label: 'Bankada askıda', textKey: 'bank_stuck' }, bankAge)
                 : withAge({ group: 'processing', label: 'Banka işliyor', textKey: 'pending_bank' }, bankAge);
         case 'bank_unknown':
-            return withAge({ group: 'delayed', label: 'Banka sonucu belirsiz', textKey: 'bank_unknown' }, created);
+            return withAge({ group: 'processing', label: 'Banka sonucu kontrol ediliyor', textKey: 'bank_unknown' }, bankAge);
+        case 'admin_review':
+            return withAge({ group: 'action', label: 'Admin kararı bekleniyor', textKey: s }, created);
+        case 'admin_processing':
+            return { group: 'processing', label: 'Admin kararı uygulanıyor', textKey: s, ageText: '' };
+        case 'admin_resolved':
+            return { group: 'closed', label: 'Admin tarafından sonuçlandırıldı', textKey: s, ageText: '' };
         case 'bank_returned_refund_pending':
             return { group: 'action', label: 'İade başarısız: elle iade et', textKey: s, ageText: '' };
         case 'error':
@@ -266,6 +275,13 @@ function getPaymentStatusInfo(log, now = Date.now()) {
         default:
             return { group: 'closed', label: s ? `Bilinmeyen durum (${s})` : 'Bilinmiyor', textKey: '', ageText: '' };
     }
+}
+
+// Bu durumlardaki kayıtlara tıklanınca admin karar penceresi açılır.
+const PAYMENT_DECISION_STATUSES = ['admin_review', 'bank_tr000_error', 'yandex_stuck_review'];
+
+function needsPaymentDecision(log) {
+    return !!log && PAYMENT_DECISION_STATUSES.includes(log.status);
 }
 
 function getFriendlyStatusLabel(record) {

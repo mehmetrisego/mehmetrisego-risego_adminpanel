@@ -22,7 +22,10 @@ test('each status maps to the planned group and label', () => {
         [{ status: 'bank_starting', created_at: minutesAgo(1) }, 'processing', 'Bankaya gönderiliyor'],
         [{ status: 'pending_bank', created_at: minutesAgo(10) }, 'processing', 'Banka işliyor'],
         [{ status: 'pending_bank', created_at: minutesAgo(200) }, 'delayed', 'Bankada askıda'],
-        [{ status: 'bank_unknown', created_at: minutesAgo(5) }, 'delayed', 'Banka sonucu belirsiz'],
+        [{ status: 'bank_unknown', created_at: minutesAgo(5) }, 'processing', 'Banka sonucu kontrol ediliyor'],
+        [{ status: 'admin_review', created_at: minutesAgo(15) }, 'action', 'Admin kararı bekleniyor'],
+        [{ status: 'admin_processing' }, 'processing', 'Admin kararı uygulanıyor'],
+        [{ status: 'admin_resolved' }, 'closed', 'Admin tarafından sonuçlandırıldı'],
         [{ status: 'bank_returned_refund_pending' }, 'action', 'İade başarısız: elle iade et'],
         [{ status: 'error' }, 'action', 'Hata: iade yapılamadı'],
         [{ status: 'yandex_stuck_review' }, 'action', 'Manuel inceleme'],
@@ -57,6 +60,12 @@ test('thresholds from the backend override the defaults', () => {
     assert.equal(u.getPaymentStatusInfo(log, NOW).group, 'delayed');
     u.setPaymentThresholds({ yandexDelayMinutes: 'x' });
     assert.equal(vm.runInContext('PAYMENT_THRESHOLDS.yandexDelayMinutes', u), 15);
+});
+
+test('only records waiting for an admin decision open the decision window', () => {
+    const u = loadUtils();
+    for (const status of ['admin_review', 'bank_tr000_error', 'yandex_stuck_review']) assert.equal(u.needsPaymentDecision({ status }), true, status);
+    for (const status of ['admin_resolved', 'admin_processing', 'success', 'pending_bank', 'bank_unknown']) assert.equal(u.needsPaymentDecision({ status }), false, status);
 });
 
 test('durations are short and readable', () => {

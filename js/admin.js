@@ -987,12 +987,17 @@ function renderPaymentPage() {
         // Etiketin altındaki kısa bilgi: aşamada geçen süre · banka durumu · iade nedeni
         const bankStatusLabel = getBankStatusLabel(log.bank_status_code);
         const returnReasonLabel = getReturnReasonLabel(log.return_reason_code);
+        const retrying = Number(log.bank_retry_count) > 0 && ['bank_unknown', 'pending_bank', 'admin_review'].includes(log.status);
         const statusSub = [
             statusInfo.ageText,
-            log.status !== 'success' ? bankStatusLabel : null,
-            log.status === 'bank_returned' ? returnReasonLabel : null
+            retrying ? `Deneme ${log.bank_retry_count}/3` : null,
+            log.status !== 'success' && log.status !== 'admin_resolved' ? bankStatusLabel : null,
+            log.status === 'bank_returned' ? returnReasonLabel : null,
+            log.status === 'admin_resolved' ? log.admin_decision_result : null
         ].filter(Boolean).join(' · ');
         const statusSubHtml = statusSub ? `<div class="status-sub">${escapeHtml(statusSub)}</div>` : '';
+        const statusClick = needsPaymentDecision(log) ? `openDecisionModal(${log.id})` : `showPaymentDetail(${log.id})`;
+        const statusTitle = needsPaymentDecision(log) ? 'Karar vermek için tıklayın' : 'Detay için tıklayın';
 
         tr.innerHTML = `
             <td class="payment-driver-cell">
@@ -1007,7 +1012,7 @@ function renderPaymentPage() {
             <td class="payment-money payment-money-net">${amountFormatted}</td>
             <td class="payment-money payment-money-gross">${grossFormatted}</td>
             <td class="payment-status">
-                <span class="status-pill tone-${statusInfo.group}" onclick="showPaymentDetail(${log.id})" title="Detay için tıklayın">${escapeHtml(statusInfo.label)}</span>
+                <span class="status-pill tone-${statusInfo.group}" onclick="${statusClick}" title="${statusTitle}">${escapeHtml(statusInfo.label)}</span>
                 ${statusSubHtml}
             </td>
             <td class="payment-date"><span>${dateFormatted}</span><span class="payment-time">${timeFormatted}</span></td>
@@ -1091,6 +1096,13 @@ function showPaymentDetail(logId) {
     if (log.yandex_refund_at) {
         detail += `\n\n🔄 Tutar sürücünün Yandex bakiyesine iade edildi.`;
     }
+    if (log.admin_decision_result) {
+        const by = [log.admin_decided_at ? formatDate(new Date(log.admin_decided_at)) : '', log.admin_decided_by || ''].filter(Boolean).join(' · ');
+        detail += `\n\nAdmin kararı: ${log.admin_decision_result}${by ? `\n${by}` : ''}`;
+    }
+    if (log.bank_retry_last_result) {
+        detail += `\n\nOtomatik deneme: ${log.bank_retry_last_result}`;
+    }
     if (log.error_message) {
         detail += `\n\nTeknik not: ${log.error_message}`;
     }
@@ -1102,6 +1114,134 @@ function showPaymentDetail(logId) {
 function closeErrorModal() {
     const modal = document.getElementById('errorDetailModal');
     if (modal) modal.style.display = 'none';
+}
+
+// ============================================
+// ADMIN KARARI (otomatik denemelerle gönderilemeyen çekimler)
+// ============================================
+
+let decisionState = null;
+
+async function openDecisionModal(logId) {
+    const modal = document.getElementById('decisionModal');
+    const body = document.getElementById('decisionBody');
+    if (!modal || !body) return;
+    decisionState = { id: logId, data: null, busy: false };
+    body.innerHTML = '<p class="decision-muted">Banka ve Yandex durumu kontrol ediliyor…</p>';
+    document.getElementById('decisionSubmit').disabled = true;
+    modal.style.display = 'flex';
+    try {
+        const res = await fetch(`${API_BASE}/admin/payment-logs/${logId}/decision`, { headers: getAdminHeaders() });
+        if (handleAdminApiResponse(res)) return;
+        const data = await res.json();
+        if (!decisionState || decisionState.id !== logId) return;
+        if (!res.ok || !data.success) throw new Error(data.message || 'Karar bilgisi alınamadı.');
+        decisionState.data = data;
+        renderDecision();
+    } catch (err) {
+        body.innerHTML = `<p class="decision-error">${escapeHtml(err.message)}</p>`;
+    }
+}
+
+function closeDecisionModal() {
+    decisionState = null;
+    const modal = document.getElementById('decisionModal');
+    if (modal) modal.style.display = 'none';
+}
+
+function renderDecision() {
+    const { record: r, bank, options, yandexDeducted } = decisionState.data;
+    const money = formatPaymentMoney;
+    const bankText = bank.found
+        ? `${getBankStatusLabel(bank.statusCode) || bank.statusCode} (${bank.statusCode}) · UPTREF ${bank.uptref}`
+        : 'Bankada transfer yok';
+    const row = (label, value) => `<div class="decision-row"><span>${label}</span><strong>${escapeHtml(String(value ?? '-'))}</strong></div>`;
+    const option = (key, title, desc, o) => `
+        <label class="decision-option${o.allowed ? '' : ' disabled'}">
+            <input type="radio" name="decisionOption" value="${key}" ${o.allowed ? '' : 'disabled'} onchange="onDecisionInput()">
+            <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(o.allowed ? desc : o.reason)}</small></span>
+        </label>`;
+    const warning = r.status === 'yandex_stuck_review'
+        ? '<div class="decision-warning">Bu kayıt eski kodla manuel incelemeye alınmıştı. Sürücüye elden ödeme yaptıysan <b>3. seçeneği</b> seç ve not olarak "elden ödendi" yaz; aksi halde sürücü iki kez ödeme alır.</div>'
+        : '';
+    const lastFail = r.admin_decision_result
+        ? `<div class="decision-warning">Önceki karar denemesi: ${escapeHtml(r.admin_decision_result)}</div>` : '';
+    document.getElementById('decisionBody').innerHTML = `
+        <div class="decision-summary">
+            ${row('Sürücü', r.beneficiary_name)}
+            ${row('İşlem', `#${r.id} · ${formatDate(new Date(r.created_at))}`)}
+            ${row('IBAN', formatIban(r.beneficiary_iban || '-'))}
+            ${row('Net / brüt', `${money(r.amount)} / ${money(r.gross_amount)}`)}
+            ${row('Bankada şu an', bankText)}
+            ${row('Yandex kesintisi', yandexDeducted ? 'Yapılmış' : 'Yok ya da iade edilmiş')}
+            ${r.bank_retry_last_result ? row('Otomatik denemeler', r.bank_retry_last_result) : ''}
+        </div>
+        ${warning}${lastFail}
+        <div class="decision-options">
+            ${option('refund', `1. ${money(options.refund.amount)} sürücünün Yandex bakiyesine geri yükle`,
+                options.refund.needsCancel ? 'Bankada bekleyen transfer önce Uption\'da iptal edilir, iptal teyit edilince iade yapılır.' : 'Düşülen brüt tutar (çekim ücreti dahil) iade edilir.', options.refund)}
+            ${option('send', `2. ${money(options.send.amount)} Uption kullanarak gönder`,
+                options.send.mode === 'confirm' ? 'Bankada bekleyen aynı transfer onaylanır; yeni transfer oluşturulmaz.' : 'Yeni banka transferi oluşturulur; önce havuz bakiyesi kontrol edilir.', options.send)}
+            ${option('none', '3. Hiçbir şey yapma', 'Kayıt "Admin tarafından sonuçlandırıldı" olur. Not zorunlu (ör. elden ödendi).', options.none)}
+        </div>
+        <label class="decision-note">Not
+            <textarea id="decisionNote" maxlength="500" rows="2" placeholder="ör. elden ödendi" oninput="onDecisionInput()"></textarea>
+        </label>
+        <p id="decisionError" class="decision-error" role="alert"></p>`;
+    onDecisionInput();
+}
+
+function selectedDecision() {
+    const el = document.querySelector('input[name="decisionOption"]:checked');
+    return el ? el.value : null;
+}
+
+function onDecisionInput() {
+    const option = selectedDecision();
+    const note = (document.getElementById('decisionNote')?.value || '').trim();
+    document.getElementById('decisionSubmit').disabled =
+        !decisionState || decisionState.busy || !option || (option === 'none' && note.length < 3);
+}
+
+async function submitDecision() {
+    const option = selectedDecision();
+    if (!decisionState || !decisionState.data || decisionState.busy || !option) return;
+    const { record: r, options } = decisionState.data;
+    const note = (document.getElementById('decisionNote')?.value || '').trim();
+    const amount = option === 'none' ? null : options[option].amount;
+    const money = formatPaymentMoney;
+    const question = option === 'refund'
+        ? `${money(amount)} ${r.beneficiary_name} adlı sürücünün Yandex bakiyesine geri yüklenecek.`
+        : option === 'send'
+            ? `${money(amount)} ${r.beneficiary_name} adlı sürücüye Uption ile gönderilecek (IBAN ${formatIban(r.beneficiary_iban || '-')}).`
+            : `İşlem #${r.id} için hiçbir şey yapılmayacak ve kayıt sonuçlandırılacak.`;
+    if (!window.confirm(`${question}\n\nOnaylıyor musun?`)) return;
+
+    const id = decisionState.id;
+    const button = document.getElementById('decisionSubmit');
+    const errorEl = document.getElementById('decisionError');
+    decisionState.busy = true;
+    button.disabled = true;
+    button.textContent = 'Uygulanıyor…';
+    errorEl.textContent = '';
+    try {
+        const res = await fetch(`${API_BASE}/admin/payment-logs/${id}/decision`, {
+            method: 'POST', headers: getAdminHeaders(), body: JSON.stringify({ option, note, amount })
+        });
+        if (handleAdminApiResponse(res)) return;
+        const data = await res.json();
+        if (!res.ok || !data.success) throw new Error(data.message || 'Karar uygulanamadı.');
+        closeDecisionModal();
+        showToast('success', data.result || 'Karar uygulandı.');
+        loadPaymentLogs(currentPaymentPage, { silent: true });
+    } catch (err) {
+        if (decisionState) decisionState.busy = false;
+        errorEl.textContent = err.message;
+        loadPaymentLogs(currentPaymentPage, { silent: true });
+    } finally {
+        button.textContent = 'Kararı uygula';
+        onDecisionInput();
+    }
 }
 
 // ============================================

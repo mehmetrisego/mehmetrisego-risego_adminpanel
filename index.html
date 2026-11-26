@@ -11,7 +11,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <link rel="stylesheet" href="css/admin.css?v=8">
+    <link rel="stylesheet" href="css/admin.css?v=9">
 </head>
 <body>
     <!-- Ambient Background -->
@@ -299,7 +299,8 @@
                                 <optgroup label="Aşamalar">
                                     <option value="yandex_pending">Yandex onayı bekleniyor / gecikiyor</option>
                                     <option value="pending_bank">Banka işliyor / bankada askıda</option>
-                                    <option value="bank_unknown">Banka sonucu belirsiz</option>
+                                    <option value="bank_unknown">Banka sonucu kontrol ediliyor</option>
+                                    <option value="admin_review">Admin kararı bekleniyor</option>
                                     <option value="bank_returned_refund_pending">İade başarısız: elle iade et</option>
                                     <option value="error">Hata: iade yapılamadı</option>
                                     <option value="yandex_stuck_review">Manuel inceleme</option>
@@ -310,6 +311,7 @@
                                     <option value="refunded">İptal: bakiyeye iade</option>
                                     <option value="yandex_failed">Yandex reddetti</option>
                                     <option value="bank_tr000_error">TR000 hata kodu</option>
+                                    <option value="admin_resolved">Admin tarafından sonuçlandırıldı</option>
                                 </optgroup>
                             </select></label>
                             <button type="button" class="btn-reload" onclick="resetPaymentFilters()">Filtreleri temizle</button>
@@ -375,6 +377,21 @@
                 </div>
                 <div class="modal-footer">
                     <button class="btn-modal-close" onclick="closeErrorModal()">Kapat</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Kararı Modali (otomatik denemelerle gönderilemeyen çekimler) -->
+        <div class="modal" id="decisionModal" style="display:none">
+            <div class="modal-content decision-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Admin Kararı</h3>
+                    <button class="btn-close-modal" onclick="closeDecisionModal()" aria-label="Karar penceresini kapat">&times;</button>
+                </div>
+                <div class="modal-body" id="decisionBody"></div>
+                <div class="modal-footer decision-footer">
+                    <button class="btn-modal-close" onclick="closeDecisionModal()">Vazgeç</button>
+                    <button class="btn-approve decision-submit" id="decisionSubmit" onclick="submitDecision()" disabled>Kararı uygula</button>
                 </div>
             </div>
         </div>
@@ -468,7 +485,7 @@
     </div>
 
     <!-- admin-utils.js: API config, token, IBAN formatlama, tarih, XSS, toast, banka durum etiketleri -->
-    <script src="js/admin-utils.js?v=3"></script>
-    <script src="js/admin.js?v=9"></script>
+    <script src="js/admin-utils.js?v=4"></script>
+    <script src="js/admin.js?v=10"></script>
 </body>
 </html>
