@@ -1162,7 +1162,7 @@ function renderDecision() {
             <span><strong>${escapeHtml(title)}</strong><small>${escapeHtml(o.allowed ? desc : o.reason)}</small></span>
         </label>`;
     const warning = r.status === 'yandex_stuck_review'
-        ? '<div class="decision-warning">Bu kayıt eski kodla manuel incelemeye alınmıştı. Sürücüye elden ödeme yaptıysan <b>3. seçeneği</b> seç ve not olarak "elden ödendi" yaz; aksi halde sürücü iki kez ödeme alır.</div>'
+        ? '<div class="decision-warning">Bu kayıt eski kodla manuel incelemeye alınmıştı. Sürücüye elden ödeme yaptıysan <b>2. seçeneği</b> seç ve not olarak "elden ödendi" yaz; aksi halde sürücü iki kez ödeme alır.</div>'
         : '';
     const lastFail = r.admin_decision_result
         ? `<div class="decision-warning">Önceki karar denemesi: ${escapeHtml(r.admin_decision_result)}</div>` : '';
@@ -1178,11 +1178,9 @@ function renderDecision() {
         </div>
         ${warning}${lastFail}
         <div class="decision-options">
-            ${option('refund', `1. ${money(options.refund.amount)} sürücünün Yandex bakiyesine geri yükle`,
-                options.refund.needsCancel ? 'Bankada bekleyen transfer önce Uption\'da iptal edilir, iptal teyit edilince iade yapılır.' : 'Düşülen brüt tutar (çekim ücreti dahil) iade edilir.', options.refund)}
-            ${option('send', `2. ${money(options.send.amount)} Uption kullanarak gönder`,
+            ${option('send', `1. ${money(options.send.amount)} Uption kullanarak gönder`,
                 options.send.mode === 'confirm' ? 'Bankada bekleyen aynı transfer onaylanır; yeni transfer oluşturulmaz.' : 'Yeni banka transferi oluşturulur; önce havuz bakiyesi kontrol edilir.', options.send)}
-            ${option('none', '3. Hiçbir şey yapma', 'Kayıt "Admin tarafından sonuçlandırıldı" olur. Not zorunlu (ör. elden ödendi).', options.none)}
+            ${option('none', '2. Hiçbir şey yapma', 'Kayıt "Admin tarafından sonuçlandırıldı" olur. Not zorunlu (ör. elden ödendi).', options.none)}
         </div>
         <label class="decision-note">Not
             <textarea id="decisionNote" maxlength="500" rows="2" placeholder="ör. elden ödendi" oninput="onDecisionInput()"></textarea>
@@ -1210,11 +1208,9 @@ async function submitDecision() {
     const note = (document.getElementById('decisionNote')?.value || '').trim();
     const amount = option === 'none' ? null : options[option].amount;
     const money = formatPaymentMoney;
-    const question = option === 'refund'
-        ? `${money(amount)} ${r.beneficiary_name} adlı sürücünün Yandex bakiyesine geri yüklenecek.`
-        : option === 'send'
-            ? `${money(amount)} ${r.beneficiary_name} adlı sürücüye Uption ile gönderilecek (IBAN ${formatIban(r.beneficiary_iban || '-')}).`
-            : `İşlem #${r.id} için hiçbir şey yapılmayacak ve kayıt sonuçlandırılacak.`;
+    const question = option === 'send'
+        ? `${money(amount)} ${r.beneficiary_name} adlı sürücüye Uption ile gönderilecek (IBAN ${formatIban(r.beneficiary_iban || '-')}).`
+        : `İşlem #${r.id} için hiçbir şey yapılmayacak ve kayıt sonuçlandırılacak.`;
     if (!window.confirm(`${question}\n\nOnaylıyor musun?`)) return;
 
     const id = decisionState.id;
